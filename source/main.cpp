@@ -288,15 +288,26 @@ int main(int argc, char* argv[])
 
     bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
 
+    // ---- SELF-TEST: pattern fisso sul framebuffer subito, prima di tutto ----
+    for (int i = 0; i < SCR_W * SCR_H; i++) fb[i] = RGB15(31, 0, 0);
+
     iprintf("\x1b[0;0HABISSO DS");
+    iprintf("\x1b[1;0H[A1] fb test rosso scritto");
     iprintf("\x1b[2;0HA: attacco  SELECT: classe");
     iprintf("\x1b[3;0HSTART: esci");
 
     g.worldSeed = randomSeedFromRtc();
+    iprintf("\x1b[4;0H[A2] seed=%08x", g.worldSeed);
+
     g.combatRng = abisso::Rng(g.worldSeed ^ 0x9E3779B9u);
     g.depth = 1;
     g.layout = abisso::generateDepth(g.depth, "main", g.worldSeed);
+    iprintf("\x1b[5;0H[A3] map %dx%d stanze:%d spawn:%d,%d", g.layout.w, g.layout.h,
+            (int)g.layout.rooms.size(), g.layout.spawn.x, g.layout.spawn.y);
     newRun(0);
+    iprintf("\x1b[6;0H[A4] mostri:%d  vis:%d  player %.1f,%.1f",
+            (int)g.gs.monsters.size(), (int)g.visible.size(),
+            g.gs.player.x, g.gs.player.y);
 
     while (pmMainLoop()) {
         swiWaitForVBlank();
@@ -317,13 +328,14 @@ int main(int argc, char* argv[])
         renderHud();
 
         if (g.frame % 30 == 0) {
+            int visCnt = 0;
+            for (size_t i = 0; i < g.visible.size(); i++)
+                if (g.visible[i]) visCnt++;
             const abisso::Player& p = g.gs.player;
-            iprintf("\x1b[5;0HPiano %d  %s  oro:%d      ", g.depth,
-                    p.cls ? p.cls->name : "?", p.gold);
-            iprintf("\x1b[6;0HHP %d/%d  mostri:%d        ", p.hp, p.maxHp,
-                    (int)g.gs.monsters.size());
-            iprintf("\x1b[7;0Hx=%.1f y=%.1f  boss:%s      ", p.x, p.y,
-                    g.gs.bossFight ? "S" : "N");
+            iprintf("\x1b[7;0HF=%d cam=%d,%d vis=%d fov=%d,%d  ", g.frame,
+                    g.camX, g.camY, visCnt, g.lastFovTx, g.lastFovTy);
+            iprintf("\x1b[8;0HHP %d/%d  mostri:%d  p=%d,%d        ", p.hp, p.maxHp,
+                    (int)g.gs.monsters.size(), (int)(p.x * 10), (int)(p.y * 10));
         }
         g.frame++;
     }
