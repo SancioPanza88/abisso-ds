@@ -1,0 +1,9 @@
+# build artifacts
+build/
+*.elf
+*.nds
+*.map
+*.grf
+*.o
+*.d
+soundbank.bin
