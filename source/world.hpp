@@ -73,6 +73,7 @@ uint32_t hashStr(const std::string& s);
 /* mulberry32 (index.html:953): stessa sequenza dell'originale JS */
 class Rng {
 public:
+    Rng() : a_(0x9E3779B9u) {}
     explicit Rng(uint32_t seed) : a_(seed) {}
     double next();
 private:
