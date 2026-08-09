@@ -83,6 +83,22 @@ private:
    worldSeed il seme del mondo: stessa combinazione => stessa mappa del web. */
 Layout generateDepth(int depth, const std::string& roomCode, uint32_t worldSeed);
 
+/* --- movimento (index.html:1520-1563) --- */
+bool isWalkableTile(const Layout& l, int tx, int ty);
+bool canOccupy(const Layout& l, double x, double y, double r);
+/* sposta (x,y) di (dx,dy)*speed*dt con collisioni + assistenza d'ingresso
+   nei corridoi; dx,dy devono essere un vettore direzione normalizzato */
+void tryMoveEntity(const Layout& l, double& x, double& y,
+                   double dx, double dy, double dt,
+                   double speed, double radius);
+
+/* --- campo visivo (index.html:3745-3785) --- */
+constexpr double FOV_RADIUS = 7.4;
+/* visibile = tile in linea di vista ora; visited = tile mai viste (fog of war).
+   Ricomputare solo quando il tile del giocatore cambia (come updateFOV). */
+void computeFov(const Layout& l, int px, int py,
+                std::vector<uint8_t>& visible, std::vector<uint8_t>& visited);
+
 /* Serializzazione canonica del layout (per i test di parità) */
 std::vector<uint8_t> serializeLayout(const Layout& l);
 uint32_t fnv1a(const std::vector<uint8_t>& data);

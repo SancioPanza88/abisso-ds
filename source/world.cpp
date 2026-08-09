@@ -391,9 +391,98 @@ Layout generateDepth(int depth, const std::string& roomCode, uint32_t worldSeed)
     return L;
 }
 
-/* --- serializzazione canonica (test di parità) --- */
+/* --- movimento (index.html:1520-1563) --- */
 
-static void putU8(std::vector<uint8_t>& d, uint32_t v)
+bool isWalkableTile(const Layout& l, int tx, int ty)
+{
+    if (tx < 0 || ty < 0 || tx >= l.w || ty >= l.h) return false;
+    return l.grid[static_cast<size_t>(ty) * l.w + tx] != T_WALL;
+}
+
+bool canOccupy(const Layout& l, double x, double y, double r)
+{
+    const double pts[4][2] = {
+        { x - r, y - r }, { x + r, y - r }, { x - r, y + r }, { x + r, y + r }
+    };
+    for (int i = 0; i < 4; i++) {
+        const int cx = static_cast<int>(std::floor(pts[i][0]));
+        const int cy = static_cast<int>(std::floor(pts[i][1]));
+        if (!isWalkableTile(l, cx, cy)) return false;
+    }
+    return true;
+}
+
+void tryMoveEntity(const Layout& l, double& x, double& y,
+                   double dx, double dy, double dt,
+                   double speed, double radius)
+{
+    const double step = speed * dt;
+    const double nx = x + dx * step;
+    const double ny = y + dy * step;
+    const bool movedX = canOccupy(l, nx, y, radius);
+    if (movedX) x = nx;
+    const bool movedY = canOccupy(l, x, ny, radius);
+    if (movedY) y = ny;
+
+    // assistenza d'ingresso nei corridoi (come index.html:1549)
+    if (dx != 0.0 && dy != 0.0) {
+        if (!movedX) {
+            const double targetY = std::floor(y) + 0.5;
+            const double diff = targetY - y;
+            const double nudged = y + (diff < 0 ? -1 : 1) * std::min(std::fabs(diff), step * 1.6);
+            if (canOccupy(l, nx, nudged, radius)) { x = nx; y = nudged; }
+        }
+        if (!movedY) {
+            const double targetX = std::floor(x) + 0.5;
+            const double diff = targetX - x;
+            const double nudged = x + (diff < 0 ? -1 : 1) * std::min(std::fabs(diff), step * 1.6);
+            if (canOccupy(l, nudged, ny, radius)) { x = nudged; y = ny; }
+        }
+    }
+}
+
+/* --- campo visivo (index.html:3745-3785) --- */
+
+static void castRay(const Layout& l, int x0, int y0, int x1, int y1,
+                    std::vector<uint8_t>& vis)
+{
+    int dx = std::abs(x1 - x0), dy = -std::abs(y1 - y0);
+    int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, x = x0, y = y0;
+    while (true) {
+        if (x >= 0 && y >= 0 && x < l.w && y < l.h) {
+            vis[static_cast<size_t>(y) * l.w + x] = 1;
+            if (l.grid[static_cast<size_t>(y) * l.w + x] == T_WALL) break;
+        } else break;
+        if (x == x1 && y == y1) break;
+        const int e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x += sx; }
+        if (e2 <= dx) { err += dx; y += sy; }
+    }
+}
+
+void computeFov(const Layout& l, int px, int py,
+                std::vector<uint8_t>& visible, std::vector<uint8_t>& visited)
+{
+    const size_t n = static_cast<size_t>(l.w) * l.h;
+    if (visible.size() != n) visible.assign(n, 0);
+    if (visited.size() != n) visited.assign(n, 0);
+    std::fill(visible.begin(), visible.end(), 0);
+
+    const int R = static_cast<int>(std::ceil(FOV_RADIUS));
+    for (int yy = py - R; yy <= py + R; yy++) {
+        for (int xx = px - R; xx <= px + R; xx++) {
+            if (xx < 0 || yy < 0 || xx >= l.w || yy >= l.h) continue;
+            const int ddx = xx - px, ddy = yy - py;
+            if (ddx * ddx + ddy * ddy > FOV_RADIUS * FOV_RADIUS) continue;
+            castRay(l, px, py, xx, yy, visible);
+        }
+    }
+    for (size_t i = 0; i < n; i++)
+        visited[i] |= visible[i];
+}
+
+/* --- serializzazione canonica (test di parità) --- */static void putU8(std::vector<uint8_t>& d, uint32_t v)
 {
     d.push_back(static_cast<uint8_t>(v & 0xFF));
 }
