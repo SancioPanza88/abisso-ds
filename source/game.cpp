@@ -247,7 +247,7 @@ static void updateMonster(Monster& m, GameState& g, Rng& rng, double dt)
 {
     const MonsterType& t = *getMonsterType(m.type);
     const Layout& l = *g.layout;
-    const Player& p = g.player;
+    Player& p = g.player;
 
     // boss dormiente: resta confinato nella tana finché la lotta non scatta
     if (t.boss && l.hasBossRoom && !g.bossFight) {
@@ -413,4 +413,7 @@ void updateCombat(GameState& g, Rng& rng, double dt)
     }
     g.monsters.swap(alive);
 }
+
+}  // namespace abisso
+
 
