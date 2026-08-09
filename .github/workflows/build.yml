@@ -20,6 +20,9 @@ jobs:
           g++ -std=c++17 -O2 -I source tests/gen_cpp.cpp source/world.cpp -o /tmp/gen_cpp
           /tmp/gen_cpp > /tmp/cpp_out.txt
 
+      - name: Compila il core di gioco (host, indipendente da libnds)
+        run: g++ -std=c++17 -O2 -Wall -I source -c source/game.cpp -o /tmp/game.o
+
       - name: Confronta parità (stesso seed => stesse mappe)
         run: diff /tmp/js_out.txt /tmp/cpp_out.txt
 
