@@ -13,9 +13,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install NDS libraries
-        run: sudo dkp-pacman -S nds-dev --noconfirm
-
       - name: Build
         run: make
 
