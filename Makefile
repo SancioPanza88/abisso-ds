@@ -29,8 +29,8 @@ BUILD    := build
 SOURCES  := source
 INCLUDES := include
 DATA     := data
-GRAPHICS := gfx
-AUDIO    := audio
+GRAPHICS :=
+AUDIO    :=
 ICON     :=
 
 # specify a directory which contains the nitro filesystem
