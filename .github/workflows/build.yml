@@ -6,6 +6,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  logic-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Genera output di riferimento (JS da index.html)
+        run: node tests/gen_js.mjs > /tmp/js_out.txt
+
+      - name: Compila e genera output C++ (host)
+        run: |
+          g++ -std=c++17 -O2 -I source tests/gen_cpp.cpp source/world.cpp -o /tmp/gen_cpp
+          /tmp/gen_cpp > /tmp/cpp_out.txt
+
+      - name: Confronta parità (stesso seed => stesse mappe)
+        run: diff /tmp/js_out.txt /tmp/cpp_out.txt
+
+      - name: Mostra hash se parità OK
+        run: cat /tmp/cpp_out.txt
+
   build:
     runs-on: ubuntu-latest
     container: devkitpro/devkitarm
