@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "sfx.hpp"
 
 #include <cmath>
 #include <cstring>
@@ -925,6 +926,204 @@ void updateCombat(GameState& g, Rng& rng, double dt)
         }
     }
     g.monsters.swap(alive);
+}
+
+/* ---------------------------------------------------------------------
+    Abilità di classe (index.html: ability definitions)
+    Ogni classe ha un'abilità speciale attivata con F/L/Y
+    --------------------------------------------------------------------- */
+void useAbility(GameState& g, Rng& rng)
+{
+    Player& p = g.player;
+    if (p.dead || p.abilityT > 0) return;
+    const ClassInfo& c = *p.cls;
+    const double ABIL_CD = 4.0;
+
+    const char* key = c.key;
+
+    if (std::strcmp(key, "guerriero") == 0) {
+        /* Carica: dash forward hitting all enemies, 1.3x dmg, brief invuln */
+        const double dashDist = 2.5;
+        const double nx = p.x + p.fx * dashDist;
+        const double ny = p.y + p.fy * dashDist;
+        if (canOccupy(*g.layout, nx, ny, 0.35)) {
+            p.x = nx; p.y = ny;
+        }
+        p.invulnT = 0.6;
+        for (Monster& m : g.monsters) {
+            const double dx = m.x - p.x, dy = m.y - p.y;
+            const double d = std::sqrt(dx * dx + dy * dy);
+            if (d < 1.8) {
+                int amount = c.dmgMin + (int)std::floor(rng.next() * (c.dmgMax - c.dmgMin + 1));
+                amount = (int)(amount * 1.3);
+                if (p.buffRage > 0) amount = (int)(amount * 1.4);
+                m.hp -= amount;
+                spawnFloatText(g, m.x, m.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
+                if (m.hp <= 0) {
+                    const MonsterType& t = *getMonsterType(m.type);
+                    p.gold += t.goldMin + (int)std::floor(rng.next() * (t.goldMax - t.goldMin + 1));
+                    spawnMonsterDrops(g, rng, m);
+                }
+            }
+        }
+        addShake(g, 0.3);
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "ladro") == 0) {
+        /* Passo Furtivo: teleport to nearest enemy, guaranteed crit 1.9x, 1.4s invis */
+        const Monster* nearest = nullptr;
+        double bestD = 1e9;
+        for (const Monster& m : g.monsters) {
+            const double dx = m.x - p.x, dy = m.y - p.y;
+            const double d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; nearest = &m; }
+        }
+        if (nearest && bestD < 15.0 * 15.0) {
+            p.x = nearest->x - p.fx * 0.8;
+            p.y = nearest->y - p.fy * 0.8;
+            if (!canOccupy(*g.layout, p.x, p.y, 0.35)) {
+                p.x = nearest->x + p.fx * 0.8;
+                p.y = nearest->y + p.fy * 0.8;
+            }
+            p.invulnT = 1.4;
+            for (Monster& m : g.monsters) {
+                const double dx = m.x - p.x, dy = m.y - p.y;
+                const double d = std::sqrt(dx * dx + dy * dy);
+                if (d < 1.5) {
+                    int amount = c.dmgMin + (int)std::floor(rng.next() * (c.dmgMax - c.dmgMin + 1));
+                    amount = (int)(amount * 1.9);
+                    if (p.buffRage > 0) amount = (int)(amount * 1.4);
+                    m.hp -= amount;
+                    spawnFloatText(g, m.x, m.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
+                    if (m.hp <= 0) {
+                        const MonsterType& t = *getMonsterType(m.type);
+                        p.gold += t.goldMin + (int)std::floor(rng.next() * (t.goldMax - t.goldMin + 1));
+                        spawnMonsterDrops(g, rng, m);
+                    }
+                }
+            }
+        }
+        addShake(g, 0.2);
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "mago") == 0) {
+        /* Onda d'Urto: AoE explosion 2.3 radius, 1.2x dmg, costs 6 mana */
+        if (p.mp < 6) return;
+        p.mp -= 6;
+        for (Monster& m : g.monsters) {
+            const double dx = m.x - p.x, dy = m.y - p.y;
+            const double d = std::sqrt(dx * dx + dy * dy);
+            if (d < 2.3) {
+                int amount = c.dmgMin + (int)std::floor(rng.next() * (c.dmgMax - c.dmgMin + 1));
+                amount = (int)(amount * 1.2);
+                if (p.buffRage > 0) amount = (int)(amount * 1.4);
+                m.hp -= amount;
+                spawnFloatText(g, m.x, m.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
+                if (m.hp <= 0) {
+                    const MonsterType& t = *getMonsterType(m.type);
+                    p.gold += t.goldMin + (int)std::floor(rng.next() * (t.goldMax - t.goldMin + 1));
+                    spawnMonsterDrops(g, rng, m);
+                }
+            }
+        }
+        addShake(g, 0.35);
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "ranger") == 0) {
+        /* Raffica: 5 arrows in fan spread ±0.42 rad, 0.7x dmg each */
+        for (int i = 0; i < 5; i++) {
+            const double spread = (i - 2) * 0.42 / 2.0;
+            const double angle = std::atan2(p.fy, p.fx) + spread;
+            Bolt b;
+            b.x = p.x; b.y = p.y;
+            b.vx = std::cos(angle) * c.projSpeed;
+            b.vy = std::sin(angle) * c.projSpeed;
+            b.life = 1.2;
+            b.r = 0.35;
+            b.dmg = (int)(rollDamage(c, rng) * 0.7);
+            if (p.buffRage > 0) b.dmg = (int)(b.dmg * 1.4);
+            b.fromPlayer = true;
+            g.bolts.push_back(b);
+        }
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "paladino") == 0) {
+        /* Muro Sacro: shield buff 5s */
+        p.buffShield = 5.0;
+        spawnFloatText(g, p.x, p.y - 0.7, "SCUDO", 4);
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "negromante") == 0) {
+        /* Drenaggio d'Anima: AoE 2.4 radius, heals 50% dmg dealt, costs 6 mana */
+        if (p.mp < 6) return;
+        p.mp -= 6;
+        int totalDmg = 0;
+        for (Monster& m : g.monsters) {
+            const double dx = m.x - p.x, dy = m.y - p.y;
+            const double d = std::sqrt(dx * dx + dy * dy);
+            if (d < 2.4) {
+                int amount = c.dmgMin + (int)std::floor(rng.next() * (c.dmgMax - c.dmgMin + 1));
+                if (p.buffRage > 0) amount = (int)(amount * 1.4);
+                m.hp -= amount;
+                totalDmg += amount;
+                spawnFloatText(g, m.x, m.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
+                if (m.hp <= 0) {
+                    const MonsterType& t = *getMonsterType(m.type);
+                    p.gold += t.goldMin + (int)std::floor(rng.next() * (t.goldMax - t.goldMin + 1));
+                    spawnMonsterDrops(g, rng, m);
+                }
+            }
+        }
+        if (totalDmg > 0) {
+            const int heal = totalDmg / 2;
+            p.hp = std::min(p.maxHp, p.hp + heal);
+            spawnFloatText(g, p.x, p.y - 0.7, ("+" + std::to_string(heal)).c_str(), 2);
+        }
+        addShake(g, 0.25);
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "bardo") == 0) {
+        /* Canto d'Ispirazione: rage buff +40% dmg for 8s */
+        p.buffRage = 8.0;
+        spawnFloatText(g, p.x, p.y - 0.7, "FURIA", 3);
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "monaco") == 0) {
+        /* Onda di Chi: piercing projectile 1.5x dmg, hits all on path */
+        Bolt b;
+        b.x = p.x; b.y = p.y;
+        b.vx = p.fx * c.projSpeed;
+        b.vy = p.fy * c.projSpeed;
+        b.life = 1.8;
+        b.r = 0.5;
+        b.dmg = (int)(rollDamage(c, rng) * 1.5);
+        if (p.buffRage > 0) b.dmg = (int)(b.dmg * 1.4);
+        b.fromPlayer = true;
+        g.bolts.push_back(b);
+        sfxAbility();
+    }
+    else if (std::strcmp(key, "prof") == 0) {
+        /* Colpo Caricato: 0.8s charge then 2x dmg plasma shot */
+        p.abilityT = ABIL_CD;
+        Bolt b;
+        b.x = p.x; b.y = p.y;
+        b.vx = p.fx * c.projSpeed * 1.3;
+        b.vy = p.fy * c.projSpeed * 1.3;
+        b.life = 1.4;
+        b.r = 0.55;
+        b.dmg = rollDamage(c, rng) * 2;
+        if (p.buffRage > 0) b.dmg = (int)(b.dmg * 1.4);
+        b.fromPlayer = true;
+        g.bolts.push_back(b);
+        addShake(g, 0.2);
+        sfxAbility();
+        return; /* early return since we set abilityT manually */
+    }
+    else {
+        return; /* unknown class, no ability */
+    }
+
+    p.abilityT = ABIL_CD;
 }
 
 }  // namespace abisso

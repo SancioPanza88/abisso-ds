@@ -134,6 +134,17 @@ static u16 tileColor(uint8_t t)
     }
 }
 
+/* --- Tile colors for fog of war (dimmed for visited but not visible) --- */
+static u16 tileColorFog(uint8_t t)
+{
+    switch (t) {
+        case T_WALL:   return OC( 4,  4,  6);
+        case T_FLOOR:  return OC(10,  9,  7);
+        case T_STAIRS: return OC(10, 14, 10);
+        default:       return OC( 2,  2,  3);
+    }
+}
+
 /* --- Monster fallback colors (for types without sprites) --- */
 static u16 monsterColor(char type, bool boss)
 {
@@ -166,6 +177,184 @@ static void dmaClearFb(u16* fb, u16 color)
 {
     const u32 fill = (u32)color | ((u32)color << 16);
     dmaFillWords(fill, fb, SCREEN_W * SCREEN_H * sizeof(u16));
+}
+
+/* --- Minimap rendering (drawn on main FB, bottom-right corner) --- */
+static void drawMinimap(u16* fb, int fbW, const Layout& l,
+                         const Player& p, const std::vector<Monster>& monsters,
+                         const std::vector<uint8_t>& visited)
+{
+    const int MM_SIZE = 60;
+    const int MM_X = fbW - MM_SIZE - 4;
+    const int MM_Y = 4;
+    const int mmW = l.w;
+    const int mmH = l.h;
+    if (mmW <= 0 || mmH <= 0) return;
+
+    const float scaleX = (float)MM_SIZE / mmW;
+    const float scaleY = (float)MM_SIZE / mmH;
+    const float scale = std::min(scaleX, scaleY);
+    const int drawW = (int)(mmW * scale);
+    const int drawH = (int)(mmH * scale);
+    const int ox = MM_X + (MM_SIZE - drawW) / 2;
+    const int oy = MM_Y + (MM_SIZE - drawH) / 2;
+
+    /* background */
+    drawRect(fb, fbW, MM_X - 1, MM_Y - 1, MM_SIZE + 2, MM_SIZE + 2, OC(0, 0, 0));
+
+    /* tiles */
+    for (int ty = 0; ty < mmH; ty++) {
+        for (int tx = 0; tx < mmW; tx++) {
+            const size_t idx = (size_t)ty * mmW + tx;
+            if (!visited.empty() && !visited[idx]) continue;
+            const int px = ox + (int)(tx * scale);
+            const int py = oy + (int)(ty * scale);
+            const int pw = std::max(1, (int)((tx + 1) * scale) - (int)(tx * scale));
+            const int ph = std::max(1, (int)((ty + 1) * scale) - (int)(ty * scale));
+            uint8_t tile = l.grid[idx];
+            u16 c;
+            if (tile == T_WALL) c = OC(6, 6, 8);
+            else if (tile == T_STAIRS) c = OC(20, 26, 6);
+            else c = OC(14, 12, 10);
+            drawRect(fb, fbW, px, py, pw, ph, c);
+        }
+    }
+
+    /* stairs marker (gold) */
+    {
+        const int px = ox + (int)(l.stairsPos.x * scale);
+        const int py = oy + (int)(l.stairsPos.y * scale);
+        drawRect(fb, fbW, px, py, 2, 2, OC(31, 26, 6));
+    }
+
+    /* monsters as red dots (only visible ones) */
+    for (const Monster& m : monsters) {
+        const int mtx = (int)m.x;
+        const int mty = (int)m.y;
+        if (mtx >= 0 && mtx < mmW && mty >= 0 && mty < mmH) {
+            const size_t idx = (size_t)mty * mmW + mtx;
+            if (!visited.empty() && !visited[idx]) continue;
+            const int px = ox + (int)(m.x * scale);
+            const int py = oy + (int)(m.y * scale);
+            drawRect(fb, fbW, px, py, 2, 2, OC(31, 6, 6));
+        }
+    }
+
+    /* player as white dot */
+    {
+        const int px = ox + (int)(p.x * scale);
+        const int py = oy + (int)(p.y * scale);
+        drawRect(fb, fbW, px - 1, py - 1, 3, 3, OC(31, 31, 31));
+    }
+}
+
+/* --- Interact with nearby objects --- */
+static bool tryInteract(GameState& g, Rng& rng)
+{
+    Player& p = g.player;
+    if (p.dead) return false;
+    const Layout& l = *g.layout;
+    const int ptx = (int)p.x;
+    const int pty = (int)p.y;
+
+    /* stairs */
+    if (l.grid[(size_t)pty * l.w + ptx] == T_STAIRS) {
+        return true; /* handled by caller */
+    }
+
+    /* chest */
+    for (const ChestSpot& cs : l.chestSpots) {
+        if (std::abs(cs.x - ptx) <= 1 && std::abs(cs.y - pty) <= 1) {
+            if (g.chestsOpened.count(cs.id) == 0) {
+                g.chestsOpened.insert(cs.id);
+                const bool isBoss = cs.id.substr(0, 5) == "cboss";
+                int gold = openChest(g, rng, cs.id, isBoss);
+                if (gold >= 0) {
+                    spawnFloatText(g, p.x, p.y - 0.7, ("+" + std::to_string(gold) + " Au").c_str(), 1);
+                    sfxChest();
+                    return true;
+                }
+            }
+        }
+    }
+
+    /* merchant */
+    if (std::abs(l.merchantPos.x - ptx) <= 1 && std::abs(l.merchantPos.y - pty) <= 1) {
+        uiShowMerchant(!uiIsMerchantVisible());
+        return true;
+    }
+
+    return false;
+}
+
+/* --- Sub screen HUD text rendering --- */
+static void renderSubHud(const GameState& g, bool forceRedraw, int& lastDepth,
+                          bool& needRedraw)
+{
+    if (!forceRedraw && g.depth == lastDepth && !uiIsMerchantVisible() && !uiIsEquipVisible())
+        return;
+
+    const Player& p = g.player;
+
+    /* If merchant or equip overlay is active, show that instead */
+    if (uiIsMerchantVisible()) {
+        iprintf("\x1b[2J");
+        iprintf(" == MERCANTE ==\n\n");
+        iprintf(" Oro: %d\n\n", p.gold);
+        iprintf(" 1) Pozione HP:  %d Au\n", merchantPrice(0, g.depth));
+        iprintf(" 2) Pozione MP:  %d Au\n", merchantPrice(1, g.depth));
+        iprintf(" 3) Potenziamento:%d Au\n", merchantPrice(2, g.depth));
+        iprintf(" 4) Equip:       %d Au\n\n", merchantPrice(3, g.depth));
+        iprintf(" A:Compr1 B:Compr2\n");
+        iprintf(" X:Compr3 Y:Compr4\n");
+        iprintf(" L/R:Chiudi\n");
+        needRedraw = false;
+        lastDepth = g.depth;
+        return;
+    }
+
+    if (uiIsEquipVisible()) {
+        iprintf("\x1b[2J");
+        iprintf(" == EQUIP ==\n\n");
+        for (int i = 0; i < EQ_SLOT_COUNT; i++) {
+            const EquipItem& eq = p.equip[i];
+            const char* slotName = equipSlotName((EquipSlot)i);
+            if (eq.rarity > 0 || eq.stats.hp > 0) {
+                iprintf(" %s:%s\n", slotName, equipRarityName(eq.rarity));
+                iprintf("  HP:%d DMG:%d%%\n", eq.stats.hp, eq.stats.dmgPct);
+            } else {
+                iprintf(" %s:---\n", slotName);
+            }
+        }
+        iprintf("\n L/R:Chiudi\n");
+        needRedraw = false;
+        lastDepth = g.depth;
+        return;
+    }
+
+    iprintf("\x1b[2J");
+    iprintf("  ABISSO DS\n");
+    iprintf("  Piano %d\n\n", g.depth);
+    if (p.dead) {
+        iprintf("  SEI MORTO!\n");
+        iprintf("  Respawn: %.0fs\n", p.respawnT);
+    } else {
+        iprintf("  HP: %d/%d\n", p.hp, p.maxHp);
+        if (p.maxMp > 0)
+            iprintf("  MP: %d/%d\n", p.mp, p.maxMp);
+        iprintf("  Oro: %d\n", p.gold);
+        iprintf("  PozHP:%d  PozMP:%d\n", p.potions, p.manaPotions);
+        if (p.buffRage > 0)   iprintf("  FURIA %.0fs\n", p.buffRage);
+        if (p.buffShield > 0) iprintf("  SCUDO %.0fs\n", p.buffShield);
+        if (p.buffHaste > 0)  iprintf("  FRETTA %.0fs\n", p.buffHaste);
+        if (p.buffFocus > 0)  iprintf("  FOCUS %.0fs\n", p.buffFocus);
+        if (g.bossFight)      iprintf("  *** BOSS ***\n");
+    }
+    iprintf("\n DP:Muovi A:Attacca\n");
+    iprintf(" B:PozHP X:PozMP\n");
+    iprintf(" Y:Interact L:Abil\n");
+    needRedraw = false;
+    lastDepth = g.depth;
 }
 
 int main(void)
@@ -210,10 +399,17 @@ int main(void)
     sfxInit();
     uiInit();
 
+    /* FOV state */
+    const size_t mapSize = (size_t)layout.w * layout.h;
+    std::vector<uint8_t> fovVisible(mapSize, 0);
+    std::vector<uint8_t> fovVisited(mapSize, 0);
+    computeFov(layout, (int)g.player.x, (int)g.player.y, fovVisible, fovVisited);
+
     int prevTileX = (int)g.player.x;
     int prevTileY = (int)g.player.y;
     int lastDepth = -1;
     bool needSubRedraw = true;
+    bool mapVisible = false;
 
     while (pmMainLoop()) {
         scanKeys();
@@ -248,10 +444,61 @@ int main(void)
             if (down & KEY_A) { playerAttack(g, rng); needSubRedraw = true; }
             if (down & KEY_B) { drinkPotion(g.player); needSubRedraw = true; }
             if (down & KEY_X) { drinkManaPotion(g.player); needSubRedraw = true; }
+            if (down & KEY_L) { useAbility(g, rng); needSubRedraw = true; }
+
+            /* Y button = interact (chest/merchant/stairs) */
+            if (down & KEY_Y) {
+                if (uiIsMerchantVisible()) {
+                    uiShowMerchant(false);
+                } else if (uiIsEquipVisible()) {
+                    uiShowEquip(false);
+                } else {
+                    const Layout& l = *g.layout;
+                    const int ptx = (int)g.player.x;
+                    const int pty = (int)g.player.y;
+                    bool didInteract = false;
+                    /* stairs */
+                    if (!didInteract && l.grid[(size_t)pty * l.w + ptx] == T_STAIRS) {
+                        int newDepth = g.depth + 1;
+                        Layout newLayout = generateDepth(newDepth, ROOM_CODE, WORLD_SEED);
+                        advanceDepth(g, newLayout, rng);
+                        layout = newLayout;
+                        g.layout = &layout;
+                        makeMonsters(g, rng);
+                        makeInitialItems(g, layout, newDepth, rng);
+                        g.player.x = layout.spawn.x + 0.5;
+                        g.player.y = layout.spawn.y + 0.5;
+                        const size_t ns = (size_t)layout.w * layout.h;
+                        fovVisible.assign(ns, 0);
+                        fovVisited.assign(ns, 0);
+                        computeFov(layout, (int)g.player.x, (int)g.player.y,
+                                   fovVisible, fovVisited);
+                        sfxStair();
+                        didInteract = true;
+                    }
+                    if (!didInteract) {
+                        tryInteract(g, rng);
+                    }
+                }
+                needSubRedraw = true;
+            }
+
+            /* R button = toggle equip overlay */
+            if (down & KEY_R) {
+                if (uiIsMerchantVisible()) {
+                    uiShowMerchant(false);
+                } else {
+                    uiShowEquip(!uiIsEquipVisible());
+                }
+                needSubRedraw = true;
+            }
 
             int curTX = (int)g.player.x;
             int curTY = (int)g.player.y;
             if (curTX != prevTileX || curTY != prevTileY) {
+                /* recompute FOV on tile change */
+                computeFov(layout, curTX, curTY, fovVisible, fovVisited);
+
                 if (layout.grid[curTY * layout.w + curTX] == T_STAIRS) {
                     int newDepth = g.depth + 1;
                     Layout newLayout = generateDepth(newDepth, ROOM_CODE, WORLD_SEED);
@@ -262,23 +509,55 @@ int main(void)
                     makeInitialItems(g, layout, newDepth, rng);
                     g.player.x = layout.spawn.x + 0.5;
                     g.player.y = layout.spawn.y + 0.5;
-                    needSubRedraw = true;
+                    /* reset FOV */
+                    const size_t ns = (size_t)layout.w * layout.h;
+                    fovVisible.assign(ns, 0);
+                    fovVisited.assign(ns, 0);
+                    computeFov(layout, (int)g.player.x, (int)g.player.y,
+                               fovVisible, fovVisited);
+                    sfxStair();
                 }
+                needSubRedraw = true;
             }
             prevTileX = curTX;
             prevTileY = curTY;
         }
 
-        /* --- Touch screen input --- */
-        if (down & KEY_TOUCH) {
+        /* --- Merchant touch input (buy items) --- */
+        if (uiIsMerchantVisible() && (down & KEY_TOUCH)) {
+            touchPosition touch;
+            touchRead(&touch);
+            const int ty = touch.py;
+            /* map touch Y zones to merchant items */
+            if (ty >= 44 && ty < 60)  buyFromMerchant(g, rng, 0);
+            else if (ty >= 60 && ty < 76)  buyFromMerchant(g, rng, 1);
+            else if (ty >= 76 && ty < 92)  buyFromMerchant(g, rng, 2);
+            else if (ty >= 92 && ty < 108) buyFromMerchant(g, rng, 3);
+            else if (ty > 140) uiShowMerchant(false);
+            needSubRedraw = true;
+        }
+        /* equip overlay: touch to close */
+        else if (uiIsEquipVisible() && (down & KEY_TOUCH)) {
+            uiShowEquip(false);
+            needSubRedraw = true;
+        }
+        /* normal touch screen input */
+        else if (down & KEY_TOUCH) {
             touchPosition touch;
             touchRead(&touch);
             int btn = uiHandleTouch(touch, SCREEN_W, SCREEN_H);
             switch (btn) {
                 case TB_HP_POTION: drinkPotion(g.player); needSubRedraw = true; break;
                 case TB_MP_POTION: drinkManaPotion(g.player); needSubRedraw = true; break;
-                case TB_MAP: break;
-                case TB_EQUIP: uiShowEquip(!uiIsEquipVisible()); break;
+                case TB_INTERACT:
+                    tryInteract(g, rng);
+                    needSubRedraw = true;
+                    break;
+                case TB_MAP:
+                    mapVisible = !mapVisible;
+                    needSubRedraw = true;
+                    break;
+                case TB_EQUIP: uiShowEquip(!uiIsEquipVisible()); needSubRedraw = true; break;
                 default: break;
             }
         }
@@ -300,7 +579,7 @@ int main(void)
         if (camX > mapPixW - SCREEN_W) camX = mapPixW - SCREEN_W;
         if (camY > mapPixH - SCREEN_H) camY = mapPixH - SCREEN_H;
 
-        /* --- Render BG layer (tiles, effects) --- */
+        /* --- Render BG layer (tiles, fog of war, effects) --- */
         dmaClearFb(mainFb, OC(4, 4, 6));
 
         int tx0 = camX / TILE_PX;
@@ -316,16 +595,29 @@ int main(void)
             for (int tx = tx0; tx <= tx1; tx++) {
                 const int sx = tx * TILE_PX - camX;
                 const int sy = ty * TILE_PX - camY;
-                const u16 c = tileColor(layout.grid[ty * layout.w + tx]);
+                const size_t idx = (size_t)ty * layout.w + tx;
+                const uint8_t tile = layout.grid[idx];
+                u16 c;
+                if (fovVisible[idx]) {
+                    c = tileColor(tile);
+                } else if (fovVisited[idx]) {
+                    c = tileColorFog(tile);
+                } else {
+                    c = OC(1, 1, 2); /* never seen: near-black */
+                }
                 drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX, c);
             }
         }
 
-        /* Draw torches on BG */
+        /* Draw torches on BG (only if visible) */
         for (const Pt& t : layout.torches) {
-            const int sx = t.x * TILE_PX - camX + 4;
-            const int sy = t.y * TILE_PX - camY + 4;
-            drawRect(mainFb, SCREEN_W, sx, sy, 8, 8, OC(28, 22, 6));
+            if (t.x >= 0 && t.x < layout.w && t.y >= 0 && t.y < layout.h) {
+                if (fovVisible[(size_t)t.y * layout.w + t.x]) {
+                    const int sx = t.x * TILE_PX - camX + 4;
+                    const int sy = t.y * TILE_PX - camY + 4;
+                    drawRect(mainFb, SCREEN_W, sx, sy, 8, 8, OC(28, 22, 6));
+                }
+            }
         }
 
         /* Draw bolts on BG */
@@ -348,13 +640,36 @@ int main(void)
             }
         }
 
+        /* Damage flash overlay */
+        if (g.damageFlashT > 0) {
+            const int a = (int)(g.damageFlashT / 0.35 * 8);
+            if (a > 0) {
+                const u16 red = OC(std::min(31, a + 15), 0, 0);
+                /* vignette-style: edges only */
+                for (int y = 0; y < SCREEN_H; y += 4) {
+                    for (int x = 0; x < SCREEN_W; x += 4) {
+                        const double dx = (x - SCREEN_W / 2.0) / (SCREEN_W / 2.0);
+                        const double dy = (y - SCREEN_H / 2.0) / (SCREEN_H / 2.0);
+                        const double dist = dx * dx + dy * dy;
+                        if (dist > 0.6) {
+                            drawRect(mainFb, SCREEN_W, x, y, 4, 4, red);
+                        }
+                    }
+                }
+            }
+        }
+
         /* --- OAM sprites: clear, then set all visible entities --- */
         oamClear(&oamMain, 0, 0);
         int oid = 0;
 
-        /* Items as OAM sprites */
+        /* Items as OAM sprites (only if visible in FOV) */
         for (const GroundItem& gi : g.items) {
             if (oid >= 128) break;
+            const int mtx = (int)gi.x;
+            const int mty = (int)gi.y;
+            if (mtx < 0 || mtx >= layout.w || mty < 0 || mty >= layout.h) continue;
+            if (!fovVisible[(size_t)mty * layout.w + mtx]) continue;
             const int sx = (int)(gi.x * TILE_PX) - camX - 8;
             const int sy = (int)(gi.y * TILE_PX) - camY - 8;
             if (sx < -16 || sx > SCREEN_W + 16 || sy < -16 || sy > SCREEN_H + 16) continue;
@@ -371,10 +686,14 @@ int main(void)
             }
         }
 
-        /* Monsters as OAM sprites */
+        /* Monsters as OAM sprites (only if visible in FOV) */
         for (const Monster& m : g.monsters) {
             if (oid >= 128) break;
             const MonsterType& mt = *getMonsterType(m.type);
+            const int mtx = (int)m.x;
+            const int mty = (int)m.y;
+            if (mtx < 0 || mtx >= layout.w || mty < 0 || mty >= layout.h) continue;
+            if (!fovVisible[(size_t)mty * layout.w + mtx]) continue;
             const int sx = (int)(m.x * TILE_PX) - camX - 8;
             const int sy = (int)(m.y * TILE_PX) - camY - 8;
             if (sx < -16 || sx > SCREEN_W + 16 || sy < -16 || sy > SCREEN_H + 16) continue;
@@ -396,49 +715,39 @@ int main(void)
             }
         }
 
-        /* Player as OAM sprite */
+        /* Player as OAM sprite (always visible) */
         if (oid < 128) {
             const int sx = (int)(g.player.x * TILE_PX) - camX - 8;
             const int sy = (int)(g.player.y * TILE_PX) - camY - 8;
             u16* gfx = sprHero[heroIdx(g.player.cls->key)];
             if (gfx && !g.player.dead) {
-                oamSet(&oamMain, oid++, sx, sy, 0, 15,
-                       SpriteSize_16x16, SpriteColorFormat_Bmp,
-                       gfx, -1, false, false, false, false, false);
+                /* invulnerability blink */
+                bool showSprite = true;
+                if (g.player.invulnT > 0) {
+                    showSprite = ((int)(g.player.invulnT * 12) % 2 == 0);
+                }
+                if (showSprite) {
+                    oamSet(&oamMain, oid++, sx, sy, 0, 15,
+                           SpriteSize_16x16, SpriteColorFormat_Bmp,
+                           gfx, -1, false, false, false, false, false);
+                }
             } else {
                 const u16 pc = g.player.dead ? OC(12, 8, 8) : OC(10, 28, 10);
                 drawRect(mainFb, SCREEN_W, sx + 2, sy + 2, 12, 12, pc);
             }
         }
 
+        /* Minimap overlay on main screen */
+        if (mapVisible) {
+            drawMinimap(mainFb, SCREEN_W, layout, g.player, g.monsters, fovVisited);
+        }
+
         /* --- VBlank: apply OAM changes --- */
         swiWaitForVBlank();
         oamUpdate(&oamMain);
 
-        /* --- Sub screen: only redraw when values change --- */
-        if (needSubRedraw || g.depth != lastDepth) {
-            iprintf("\x1b[2J");
-            iprintf("  ABISSO DS\n");
-            iprintf("  Piano %d\n\n", g.depth);
-            if (g.player.dead) {
-                iprintf("  SEI MORTO!\n");
-                iprintf("  Respawn: %.0fs\n", g.player.respawnT);
-            } else {
-                iprintf("  HP: %d/%d\n", g.player.hp, g.player.maxHp);
-                if (g.player.maxMp > 0)
-                    iprintf("  MP: %d/%d\n", g.player.mp, g.player.maxMp);
-                iprintf("  Oro: %d\n", g.player.gold);
-                iprintf("  Pozioni: %d\n", g.player.potions);
-                if (g.player.buffRage > 0)   iprintf("  FURIA\n");
-                if (g.player.buffShield > 0) iprintf("  SCUDO\n");
-                if (g.player.buffHaste > 0)  iprintf("  FRETTA\n");
-                if (g.player.buffFocus > 0)  iprintf("  FOCUS\n");
-            }
-            iprintf("\n  D-Pad:Muovi A:Attacca\n");
-            iprintf("  B:PozHP X:PozMP\n");
-            needSubRedraw = false;
-            lastDepth = g.depth;
-        }
+        /* --- Sub screen HUD --- */
+        renderSubHud(g, needSubRedraw, lastDepth, needSubRedraw);
     }
 
     return 0;

@@ -168,6 +168,7 @@ void makeInitialItems(GameState& g, const Layout& l, int depth, Rng& rng);
 void makeMonsters(GameState& g, Rng& rng);
 void updateCombat(GameState& g, Rng& rng, double dt);
 void playerAttack(GameState& g, Rng& rng);
+void useAbility(GameState& g, Rng& rng);
 void playerSetClass(Player& p, const char* key);
 
 /* --- oggetti a terra --- */
