@@ -486,16 +486,12 @@ static void newRun(int classIdx)
 int main(int argc, char* argv[])
 {
     videoSetMode(MODE_5_2D);
-    videoSetModeSub(MODE_0_2D);
+    videoSetModeSub(MODE_5_2D);
     vramSetBankA(VRAM_A_MAIN_BG);
     vramSetBankC(VRAM_C_SUB_BG);
 
-    consoleDemoInit();
-
     bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-
-    /* sub-screen: bg0 per HUD testuale come fallback */
-    bgInit(2, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
+    bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
 
     abisso::sfxInit();
     abisso::uiInit();
@@ -516,8 +512,7 @@ int main(int argc, char* argv[])
             updateInput();
         }
 
-    u32 down = keysDown();
-        if (down & KEY_START) break;
+        if (keysDown() & KEY_START) break;
 
         abisso::updateCombat(g.gs, g.combatRng, 1.0 / 60.0);
         updateFov();
