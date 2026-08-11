@@ -6,23 +6,23 @@
 
 namespace abisso {
 
-/* Touch button zones (256x192 sub-screen) */
+#define OPAQUE_RGB15(r,g,b) (BIT(15) | RGB15(r,g,b))
+
 struct TouchZone {
     int x1, y1, x2, y2;
 };
 
 static const TouchZone BUTTON_ZONES[TB_COUNT] = {
-    {   8,  72, 120, 100 },  /* TB_HP_POTION */
-    { 136,  72, 248, 100 },  /* TB_MP_POTION */
-    {  48, 108, 208, 138 },  /* TB_INTERACT */
-    {   8, 148,  78, 178 },  /* TB_MAP */
-    { 178, 148, 248, 178 },  /* TB_EQUIP */
+    {   8,  72, 120, 100 },
+    { 136,  72, 248, 100 },
+    {  48, 108, 208, 138 },
+    {   8, 148,  78, 178 },
+    { 178, 148, 248, 178 },
 };
 
 static bool s_merchantVisible = false;
 static bool s_equipVisible = false;
 static char s_interactLabel[32] = "INTERAGISCI";
-static int s_lastFrame = -1;
 
 void uiInit()
 {
@@ -42,14 +42,12 @@ bool uiIsMerchantVisible() { return s_merchantVisible; }
 void uiShowEquip(bool show) { s_equipVisible = show; }
 bool uiIsEquipVisible() { return s_equipVisible; }
 
-/* Draw a single pixel character at position */
 static inline void putPixel(u16* fb, int fbW, int x, int y, u16 color)
 {
     if (x >= 0 && x < fbW && y >= 0 && y < 192)
         fb[y * fbW + x] = color;
 }
 
-/* Draw a filled rectangle */
 static void fillRect(u16* fb, int fbW, int x, int y, int w, int h, u16 color)
 {
     for (int j = 0; j < h; j++)
@@ -57,11 +55,9 @@ static void fillRect(u16* fb, int fbW, int x, int y, int w, int h, u16 color)
             putPixel(fb, fbW, x + i, y + j, color);
 }
 
-/* Draw a button with text */
-static void drawButton(u16* fb, int fbW, const TouchZone& z, const char* label, u16 bgColor, u16 borderColor, bool enabled)
+static void drawButton(u16* fb, int fbW, const TouchZone& z, u16 bgColor, u16 borderColor, bool enabled)
 {
     fillRect(fb, fbW, z.x1, z.y1, z.x2 - z.x1, z.y2 - z.y1, bgColor);
-    /* border */
     for (int i = z.x1; i < z.x2; i++) {
         putPixel(fb, fbW, i, z.y1, borderColor);
         putPixel(fb, fbW, i, z.y2 - 1, borderColor);
@@ -71,14 +67,12 @@ static void drawButton(u16* fb, int fbW, const TouchZone& z, const char* label, 
         putPixel(fb, fbW, z.x2 - 1, j, borderColor);
     }
     if (!enabled) {
-        /* dim button */
-        fillRect(fb, fbW, z.x1 + 1, z.y1 + 1, z.x2 - z.x1 - 2, z.y2 - z.y1 - 2, RGB15(3, 3, 3));
+        fillRect(fb, fbW, z.x1 + 1, z.y1 + 1, z.x2 - z.x1 - 2, z.y2 - z.y1 - 2,
+                 OPAQUE_RGB15(3, 3, 3));
     }
 }
 
-/* Simple text renderer: 3x5 font */
 static const unsigned char FONT3x5[96][5] = {
-    /* ASCII 32+ */
     {0x00,0x00,0x00,0x00,0x00}, /* space */
     {0x04,0x04,0x04,0x00,0x04}, /* ! */
     {0x0A,0x0A,0x00,0x00,0x00}, /* " */
@@ -167,134 +161,115 @@ void uiRender(u16* subFb, int fbW, const GameState& g, int mapVisible)
 {
     const Player& p = g.player;
 
-    /* background */
-    fillRect(subFb, fbW, 0, 0, fbW, 192, RGB15(2, 2, 3));
+    fillRect(subFb, fbW, 0, 0, fbW, 192, OPAQUE_RGB15(2, 2, 3));
 
-    /* HP bar */
     const int hpFrac = p.maxHp > 0 ? (p.hp * 100 / p.maxHp) : 0;
-    drawBar(subFb, fbW, 8, 4, 100, 6, hpFrac, RGB15(31, 10, 10), RGB15(6, 2, 2));
+    drawBar(subFb, fbW, 8, 4, 100, 6, hpFrac, OPAQUE_RGB15(31, 10, 10), OPAQUE_RGB15(6, 2, 2));
     char buf[64];
     std::snprintf(buf, sizeof(buf), "HP %d/%d", p.hp, p.maxHp);
-    drawText(subFb, fbW, 8, 12, buf, RGB15(31, 15, 15));
+    drawText(subFb, fbW, 8, 12, buf, OPAQUE_RGB15(31, 15, 15));
 
-    /* MP bar */
     if (p.maxMp > 0) {
         const int mpFrac = (p.mp * 100 / p.maxMp);
-        drawBar(subFb, fbW, 8, 22, 100, 5, mpFrac, RGB15(10, 20, 31), RGB15(2, 4, 7));
+        drawBar(subFb, fbW, 8, 22, 100, 5, mpFrac, OPAQUE_RGB15(10, 20, 31), OPAQUE_RGB15(2, 4, 7));
         std::snprintf(buf, sizeof(buf), "MP %d/%d", p.mp, p.maxMp);
-        drawText(subFb, fbW, 8, 29, buf, RGB15(15, 22, 31));
+        drawText(subFb, fbW, 8, 29, buf, OPAQUE_RGB15(15, 22, 31));
     }
 
-    /* Gold */
     std::snprintf(buf, sizeof(buf), "Au:%d", p.gold);
-    drawText(subFb, fbW, 8, 38, buf, RGB15(31, 26, 6));
+    drawText(subFb, fbW, 8, 38, buf, OPAQUE_RGB15(31, 26, 6));
 
-    /* Potions counts */
     std::snprintf(buf, sizeof(buf), "P:%d M:%d", p.potions, p.manaPotions);
-    drawText(subFb, fbW, 8, 47, buf, RGB15(20, 20, 20));
+    drawText(subFb, fbW, 8, 47, buf, OPAQUE_RGB15(20, 20, 20));
 
-    /* Depth */
     std::snprintf(buf, sizeof(buf), "Piano %d", g.depth);
-    drawText(subFb, fbW, 120, 38, buf, RGB15(20, 18, 15));
+    drawText(subFb, fbW, 120, 38, buf, OPAQUE_RGB15(20, 18, 15));
 
-    /* Buffs */
     int bx = 8;
-    if (p.buffRage > 0) { drawText(subFb, fbW, bx, 56, "FURIA", RGB15(31, 10, 10)); bx += 28; }
-    if (p.buffShield > 0) { drawText(subFb, fbW, bx, 56, "SCUDO", RGB15(10, 20, 31)); bx += 30; }
-    if (p.buffHaste > 0) { drawText(subFb, fbW, bx, 56, "FRETTA", RGB15(31, 26, 6)); bx += 36; }
-    if (p.buffFocus > 0) { drawText(subFb, fbW, bx, 56, "FOCUS", RGB15(15, 28, 31)); bx += 30; }
+    if (p.buffRage > 0) { drawText(subFb, fbW, bx, 56, "FURIA", OPAQUE_RGB15(31, 10, 10)); bx += 28; }
+    if (p.buffShield > 0) { drawText(subFb, fbW, bx, 56, "SCUDO", OPAQUE_RGB15(10, 20, 31)); bx += 30; }
+    if (p.buffHaste > 0) { drawText(subFb, fbW, bx, 56, "FRETTA", OPAQUE_RGB15(31, 26, 6)); bx += 36; }
+    if (p.buffFocus > 0) { drawText(subFb, fbW, bx, 56, "FOCUS", OPAQUE_RGB15(15, 28, 31)); bx += 30; }
 
-    /* Touch buttons */
-    const u16 btnBg = RGB15(6, 5, 4);
-    const u16 btnBorder = RGB15(14, 12, 9);
+    const u16 btnBg = OPAQUE_RGB15(6, 5, 4);
+    const u16 btnBorder = OPAQUE_RGB15(14, 12, 9);
 
-    /* HP Potion button */
-    drawButton(subFb, fbW, BUTTON_ZONES[TB_HP_POTION],
-               "POZ HP", btnBg, btnBorder, p.potions > 0 && p.hp < p.maxHp);
+    drawButton(subFb, fbW, BUTTON_ZONES[TB_HP_POTION], btnBg, btnBorder, p.potions > 0 && p.hp < p.maxHp);
     drawText(subFb, fbW, BUTTON_ZONES[TB_HP_POTION].x1 + 4,
-             BUTTON_ZONES[TB_HP_POTION].y1 + 10, "POZ HP", RGB15(31, 15, 15));
+             BUTTON_ZONES[TB_HP_POTION].y1 + 10, "POZ HP", OPAQUE_RGB15(31, 15, 15));
 
-    /* MP Potion button */
-    drawButton(subFb, fbW, BUTTON_ZONES[TB_MP_POTION],
-               "POZ MP", btnBg, btnBorder, p.manaPotions > 0 && p.maxMp > 0 && p.mp < p.maxMp);
+    drawButton(subFb, fbW, BUTTON_ZONES[TB_MP_POTION], btnBg, btnBorder, p.manaPotions > 0 && p.maxMp > 0 && p.mp < p.maxMp);
     drawText(subFb, fbW, BUTTON_ZONES[TB_MP_POTION].x1 + 4,
-             BUTTON_ZONES[TB_MP_POTION].y1 + 10, "POZ MP", RGB15(15, 22, 31));
+             BUTTON_ZONES[TB_MP_POTION].y1 + 10, "POZ MP", OPAQUE_RGB15(15, 22, 31));
 
-    /* Interact button */
-    const u16 intBg = RGB15(8, 12, 6);
-    drawButton(subFb, fbW, BUTTON_ZONES[TB_INTERACT], s_interactLabel, intBg, RGB15(14, 20, 10), true);
+    const u16 intBg = OPAQUE_RGB15(8, 12, 6);
+    drawButton(subFb, fbW, BUTTON_ZONES[TB_INTERACT], intBg, OPAQUE_RGB15(14, 20, 10), true);
     drawText(subFb, fbW, BUTTON_ZONES[TB_INTERACT].x1 + 16,
-             BUTTON_ZONES[TB_INTERACT].y1 + 10, s_interactLabel, RGB15(20, 28, 15));
+             BUTTON_ZONES[TB_INTERACT].y1 + 10, s_interactLabel, OPAQUE_RGB15(20, 28, 15));
 
-    /* Map toggle */
-    drawButton(subFb, fbW, BUTTON_ZONES[TB_MAP], "MAP", btnBg, btnBorder, true);
+    drawButton(subFb, fbW, BUTTON_ZONES[TB_MAP], btnBg, btnBorder, true);
     drawText(subFb, fbW, BUTTON_ZONES[TB_MAP].x1 + 12,
-             BUTTON_ZONES[TB_MAP].y1 + 10, "MAP", RGB15(20, 20, 20));
+             BUTTON_ZONES[TB_MAP].y1 + 10, "MAP", OPAQUE_RGB15(20, 20, 20));
 
-    /* Equipment toggle */
-    drawButton(subFb, fbW, BUTTON_ZONES[TB_EQUIP], "EQUIP", btnBg, btnBorder, true);
+    drawButton(subFb, fbW, BUTTON_ZONES[TB_EQUIP], btnBg, btnBorder, true);
     drawText(subFb, fbW, BUTTON_ZONES[TB_EQUIP].x1 + 8,
-             BUTTON_ZONES[TB_EQUIP].y1 + 10, "EQUIP", RGB15(20, 20, 20));
+             BUTTON_ZONES[TB_EQUIP].y1 + 10, "EQUIP", OPAQUE_RGB15(20, 20, 20));
 
-    /* Minimap area (bottom 54 pixels) */
     if (mapVisible) {
-        fillRect(subFb, fbW, 0, 138, fbW, 54, RGB15(1, 1, 2));
-        drawText(subFb, fbW, 4, 140, "MINIMAP", RGB15(10, 10, 10));
+        fillRect(subFb, fbW, 0, 138, fbW, 54, OPAQUE_RGB15(1, 1, 2));
+        drawText(subFb, fbW, 4, 140, "MINIMAP", OPAQUE_RGB15(10, 10, 10));
     }
 
-    /* Equipment panel overlay */
     if (s_equipVisible) {
-        fillRect(subFb, fbW, 0, 0, fbW, 192, RGB15(4, 3, 2));
-        drawText(subFb, fbW, 4, 4, "EQUIPAGGIAMENTO", RGB15(31, 26, 6));
+        fillRect(subFb, fbW, 0, 0, fbW, 192, OPAQUE_RGB15(4, 3, 2));
+        drawText(subFb, fbW, 4, 4, "EQUIPAGGIAMENTO", OPAQUE_RGB15(31, 26, 6));
         for (int i = 0; i < EQ_SLOT_COUNT; i++) {
             const EquipItem& eq = p.equip[i];
             const char* slotName = equipSlotName((EquipSlot)i);
-            drawText(subFb, fbW, 8, 16 + i * 14, slotName, RGB15(15, 14, 12));
+            drawText(subFb, fbW, 8, 16 + i * 14, slotName, OPAQUE_RGB15(15, 14, 12));
             if (eq.rarity > 0 || eq.stats.hp > 0) {
-                u16 rarityColor = RGB15(15, 15, 15);
-                if (eq.rarity == EQ_RARO) rarityColor = RGB15(10, 20, 31);
-                if (eq.rarity == EQ_EPICO) rarityColor = RGB15(18, 10, 31);
-                if (eq.rarity == EQ_LEGGENARIO) rarityColor = RGB15(31, 18, 4);
+                u16 rarityColor = OPAQUE_RGB15(15, 15, 15);
+                if (eq.rarity == EQ_RARO) rarityColor = OPAQUE_RGB15(10, 20, 31);
+                if (eq.rarity == EQ_EPICO) rarityColor = OPAQUE_RGB15(18, 10, 31);
+                if (eq.rarity == EQ_LEGGENARIO) rarityColor = OPAQUE_RGB15(31, 18, 4);
                 std::snprintf(buf, sizeof(buf), "%s HP:%d DMG:%d%%",
                               equipRarityName(eq.rarity), eq.stats.hp, eq.stats.dmgPct);
                 drawText(subFb, fbW, 8, 21 + i * 14, buf, rarityColor);
             } else {
-                drawText(subFb, fbW, 8, 21 + i * 14, "---", RGB15(8, 8, 8));
+                drawText(subFb, fbW, 8, 21 + i * 14, "---", OPAQUE_RGB15(8, 8, 8));
             }
         }
-        drawText(subFb, fbW, 4, 178, "TOCCA PER CHIUDERE", RGB15(10, 10, 10));
+        drawText(subFb, fbW, 4, 178, "TOCCA PER CHIUDERE", OPAQUE_RGB15(10, 10, 10));
     }
 
-    /* Merchant panel overlay */
     if (s_merchantVisible) {
-        fillRect(subFb, fbW, 0, 0, fbW, 192, RGB15(4, 3, 2));
-        drawText(subFb, fbW, 4, 4, "MERCANTE", RGB15(31, 26, 6));
+        fillRect(subFb, fbW, 0, 0, fbW, 192, OPAQUE_RGB15(4, 3, 2));
+        drawText(subFb, fbW, 4, 4, "MERCANTE", OPAQUE_RGB15(31, 26, 6));
         std::snprintf(buf, sizeof(buf), "Oro: %d", p.gold);
-        drawText(subFb, fbW, 4, 14, buf, RGB15(31, 26, 6));
+        drawText(subFb, fbW, 4, 14, buf, OPAQUE_RGB15(31, 26, 6));
 
         const int prices[] = { merchantPrice(0, g.depth), merchantPrice(1, g.depth),
                                merchantPrice(2, g.depth), merchantPrice(3, g.depth) };
         const char* items[] = { "Pozione HP", "Pozione MP", "Potenziamento", "Equipaggiamento" };
-        const u16 colors[] = { RGB15(31,15,15), RGB15(15,22,31), RGB15(31,26,6), RGB15(20,20,20) };
+        const u16 colors[] = { OPAQUE_RGB15(31,15,15), OPAQUE_RGB15(15,22,31), OPAQUE_RGB15(31,26,6), OPAQUE_RGB15(20,20,20) };
 
         for (int i = 0; i < 4; i++) {
             const int y = 28 + i * 16;
             const bool canBuy = p.gold >= prices[i];
-            const u16 textColor = canBuy ? colors[i] : RGB15(8, 8, 8);
+            const u16 textColor = canBuy ? colors[i] : OPAQUE_RGB15(8, 8, 8);
             drawText(subFb, fbW, 8, y, items[i], textColor);
             std::snprintf(buf, sizeof(buf), "%d Au", prices[i]);
-            drawText(subFb, fbW, 140, y, buf, canBuy ? RGB15(31,26,6) : RGB15(8,8,8));
+            drawText(subFb, fbW, 140, y, buf, canBuy ? OPAQUE_RGB15(31,26,6) : OPAQUE_RGB15(8,8,8));
         }
-        drawText(subFb, fbW, 4, 178, "TOCCA PER CHIUDERE", RGB15(10, 10, 10));
+        drawText(subFb, fbW, 4, 178, "TOCCA PER CHIUDERE", OPAQUE_RGB15(10, 10, 10));
     }
 
-    /* Death overlay */
     if (p.dead) {
-        fillRect(subFb, fbW, 0, 0, fbW, 192, RGB15(15, 3, 3));
-        drawText(subFb, fbW, 64, 80, "SEI MORTO", RGB15(31, 8, 8));
+        fillRect(subFb, fbW, 0, 0, fbW, 192, OPAQUE_RGB15(15, 3, 3));
+        drawText(subFb, fbW, 64, 80, "SEI MORTO", OPAQUE_RGB15(31, 8, 8));
         std::snprintf(buf, sizeof(buf), "Respawn: %.0fs", p.respawnT);
-        drawText(subFb, fbW, 56, 96, buf, RGB15(20, 12, 12));
-        drawText(subFb, fbW, 32, 112, "Oro e equip persi!", RGB15(20, 10, 10));
+        drawText(subFb, fbW, 56, 96, buf, OPAQUE_RGB15(20, 12, 12));
+        drawText(subFb, fbW, 32, 112, "Oro e equip persi!", OPAQUE_RGB15(20, 10, 10));
     }
 }
 
