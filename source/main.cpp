@@ -58,14 +58,6 @@ extern "C" {
     extern const unsigned short icon_potion_hpBitmap[];
     extern const unsigned short icon_potion_manaBitmap[];
     extern const unsigned short icon_shield_buffBitmap[];
-    extern const unsigned short wall_stoneBitmap[];
-    extern const unsigned short wall_brickBitmap[];
-    extern const unsigned short floor_stoneBitmap[];
-    extern const unsigned short floor_dirtBitmap[];
-    extern const unsigned short torchBitmap[];
-    extern const unsigned short stairsBitmap[];
-    extern const unsigned short chest_sheetBitmap[];
-    extern const unsigned short merchantBitmap[];
 }
 
 /* --- OAM sprite GFX pointers --- */
@@ -131,42 +123,36 @@ static int heroIdx(const char* key)
     return 0;
 }
 
-/* --- Tile textures (16x16 16-bit, indexed by depth/room theme) --- */
-static const u16* wallTex = wall_stoneBitmap;
-static const u16* floorTex = floor_stoneBitmap;
-static const u16* stairsTex = stairsBitmap;
-static const u16* torchTex = torchBitmap;
-
-/* --- Blit a 16x16 texture to framebuffer at tile position --- */
-static void blitTile(u16* fb, int fbW, int sx, int sy, const u16* tex, int tint)
+/* --- Hash for procedural texture noise --- */
+static inline u32 hashPx(int x, int y)
 {
-    if (!tex) return;
-    for (int j = 0; j < TILE_PX; j++) {
-        const int py = sy + j;
-        if (py < 0 || py >= SCREEN_H) continue;
-        const int row = py * fbW + sx;
-        const int texRow = j * TILE_PX;
-        for (int i = 0; i < TILE_PX; i++) {
-            const int px = sx + i;
-            if (px < 0 || px >= fbW) continue;
-            u16 c = tex[texRow + i];
-            /* apply tint: 0=normal, 1=dim (fog), 2=black */
-            if (tint == 1) {
-                /* halve brightness */
-                const int r = (c >> 10) & 0x1F;
-                const int g = (c >> 5) & 0x1F;
-                const int b = c & 0x1F;
-                c = OC(r / 2, g / 2, b / 2);
-            } else if (tint == 2) {
-                c = OC(1, 1, 2);
-            }
-            /* preserve transparent (magenta) pixels */
-            const int r = (c >> 10) & 0x1F;
-            const int g2 = (c >> 5) & 0x1F;
-            const int b = c & 0x1F;
-            if (r == 31 && g2 == 0 && b == 31) continue; /* magenta = transparent */
-            fb[row + i] = c | BIT(15);
-        }
+    u32 h = (u32)(x * 374761393u + y * 668265263u);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h;
+}
+
+/* --- Procedural textured tile colors (wall: stone, floor: stone, stairs) --- */
+static u16 tileColorTextured(uint8_t t, int px, int py)
+{
+    u32 h = hashPx(px, py);
+    int noise = (int)(h & 7) - 3;
+    switch (t) {
+        case T_WALL:   return OC( 8 + noise,  8 + noise, 14 + noise);
+        case T_FLOOR:  return OC(20 + noise, 18 + noise, 15 + noise);
+        case T_STAIRS: return OC(20 + noise, 28 + noise, 20 + noise);
+        default:       return OC( 4 + noise,  4 + noise,  6 + noise);
+    }
+}
+
+static u16 tileColorTexturedFog(uint8_t t, int px, int py)
+{
+    u32 h = hashPx(px, py);
+    int noise = (int)(h & 3) - 1;
+    switch (t) {
+        case T_WALL:   return OC( 4 + noise,  4 + noise,  6 + noise);
+        case T_FLOOR:  return OC(10 + noise,  9 + noise,  7 + noise);
+        case T_STAIRS: return OC(10 + noise, 14 + noise, 10 + noise);
+        default:       return OC( 2,  2,  3);
     }
 }
 
@@ -642,15 +628,15 @@ int main(void)
                 const int sy = ty * TILE_PX - camY;
                 const size_t idx = (size_t)ty * layout.w + tx;
                 const uint8_t tile = layout.grid[idx];
-                const int tint = fovVisible[idx] ? 0 : fovVisited[idx] ? 1 : 2;
-                if (tile == T_WALL) {
-                    blitTile(mainFb, SCREEN_W, sx, sy, wallTex, tint);
-                } else if (tile == T_FLOOR) {
-                    blitTile(mainFb, SCREEN_W, sx, sy, floorTex, tint);
-                } else if (tile == T_STAIRS) {
-                    blitTile(mainFb, SCREEN_W, sx, sy, stairsTex, tint);
+                if (fovVisible[idx]) {
+                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX,
+                             tileColorTextured(tile, tx, ty));
+                } else if (fovVisited[idx]) {
+                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX,
+                             tileColorTexturedFog(tile, tx, ty));
                 } else {
-                    blitTile(mainFb, SCREEN_W, sx, sy, floorTex, tint);
+                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX,
+                             OC(1, 1, 2));
                 }
             }
         }
@@ -659,9 +645,12 @@ int main(void)
         for (const Pt& t : layout.torches) {
             if (t.x >= 0 && t.x < layout.w && t.y >= 0 && t.y < layout.h) {
                 if (fovVisible[(size_t)t.y * layout.w + t.x]) {
-                    const int sx = t.x * TILE_PX - camX;
-                    const int sy = t.y * TILE_PX - camY;
-                    blitTile(mainFb, SCREEN_W, sx, sy, torchTex, 0);
+                    const int sx = t.x * TILE_PX - camX + 4;
+                    const int sy = t.y * TILE_PX - camY + 4;
+                    /* torch flicker via hash */
+                    const int flicker = (int)(hashPx(t.x + (int)(g.gameTime * 3), t.y) & 7);
+                    drawRect(mainFb, SCREEN_W, sx, sy, 8, 8,
+                             OC(28 + flicker / 2, 22 + flicker / 3, 6));
                 }
             }
         }
@@ -767,10 +756,8 @@ int main(void)
             }
             /* attack squash stretch */
             int offX = 0;
-            int sprW = 16, sprH = 16;
             if (m.atkAnimT > 0) {
                 offY -= 1;
-                sprH = 18;
             }
             const int sx = (int)(m.x * TILE_PX) - camX - 8 + offX;
             const int sy = (int)(m.y * TILE_PX) - camY - 8 + offY;
