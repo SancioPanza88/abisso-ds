@@ -64,6 +64,9 @@ extern "C" {
     extern const unsigned short torchBitmap[];
 }
 
+/* --- Back buffer: draw to main RAM, DMA to VRAM at VBlank (eliminates tearing) --- */
+static u16 backBuf[SCREEN_W * SCREEN_H];
+
 /* --- OAM sprite GFX pointers --- */
 static u16* sprHero[4];
 static u16* sprMonster[256];
@@ -72,7 +75,14 @@ static u16* sprItem[8];
 static u16* loadSpr(const void* data)
 {
     u16* gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16, SpriteColorFormat_Bmp);
-    if (gfx) dmaCopy(data, gfx, SPR_BYTES);
+    if (!gfx) return 0;
+    dmaCopy(data, gfx, SPR_BYTES);
+    for (int i = 0; i < SPR_PX * SPR_PX; i++) {
+        if ((gfx[i] & 0x7FFF) == 0)
+            gfx[i] = 0x0000;
+        else
+            gfx[i] |= BIT(15);
+    }
     return gfx;
 }
 
@@ -465,7 +475,7 @@ int main(void)
     vramSetBankA(VRAM_A_MAIN_BG);
     vramSetBankB(VRAM_B_MAIN_SPRITE);
     int bgMain = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-    u16* mainFb = bgGetGfxPtr(bgMain);
+    u16* vramFb = bgGetGfxPtr(bgMain);
 
     /* === Sub screen: MODE_0 text console === */
     videoSetModeSub(MODE_0_2D);
@@ -477,8 +487,8 @@ int main(void)
     /* === Load all sprites into VRAM_B === */
     initSprites();
 
-    /* Clear main screen */
-    dmaClearFb(mainFb, OC(4, 4, 6));
+    /* Clear back buffer */
+    dmaClearFb(backBuf, OC(4, 4, 6));
 
     /* --- Init game state --- */
     Rng rng(WORLD_SEED);
@@ -545,8 +555,8 @@ int main(void)
             }
 
             if (down & KEY_A) { playerAttack(g, rng); needSubRedraw = true; }
-            if (down & KEY_B) { drinkPotion(g.player); needSubRedraw = true; }
-            if (down & KEY_X) { drinkManaPotion(g.player); needSubRedraw = true; }
+            if (down & KEY_B) { drinkPotion(g.player); sfxPotion(); needSubRedraw = true; }
+            if (down & KEY_X) { drinkManaPotion(g.player); sfxMana(); needSubRedraw = true; }
             if (down & KEY_L) { useAbility(g, rng); needSubRedraw = true; }
 
             /* Y button = interact (chest/merchant/stairs) */
@@ -650,8 +660,8 @@ int main(void)
             touchRead(&touch);
             int btn = uiHandleTouch(touch, SCREEN_W, SCREEN_H);
             switch (btn) {
-                case TB_HP_POTION: drinkPotion(g.player); needSubRedraw = true; break;
-                case TB_MP_POTION: drinkManaPotion(g.player); needSubRedraw = true; break;
+                case TB_HP_POTION: drinkPotion(g.player); sfxPotion(); needSubRedraw = true; break;
+                case TB_MP_POTION: drinkManaPotion(g.player); sfxMana(); needSubRedraw = true; break;
                 case TB_INTERACT:
                     tryInteract(g, rng);
                     needSubRedraw = true;
@@ -683,7 +693,7 @@ int main(void)
         if (camY > mapPixH - SCREEN_H) camY = mapPixH - SCREEN_H;
 
         /* --- Render BG layer (tiles, fog of war, effects) --- */
-        dmaClearFb(mainFb, OC(4, 4, 6));
+        dmaClearFb(backBuf, OC(4, 4, 6));
 
         /* torch flicker: dual-frequency sine like HTML */
         const double flick = 0.9 + 0.1 * std::sin(g.torchPhase * 3.1)
@@ -708,28 +718,28 @@ int main(void)
                 const uint8_t tile = layout.grid[idx];
                 if (fovVisible[idx]) {
                     if (tile == T_WALL) {
-                        blitTileShaded(mainFb, SCREEN_W, sx, sy, wall_stoneBitmap, flickMul);
+                        blitTileShaded(backBuf, SCREEN_W, sx, sy, wall_stoneBitmap, flickMul);
                         /* 3D bevel on walls */
                         u16 hi = BIT(15) | RGB15(14, 12, 9);
                         u16 lo = BIT(15) | RGB15(2, 2, 2);
-                        drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, 2, hi);
-                        drawRect(mainFb, SCREEN_W, sx, sy + 14, TILE_PX, 2, lo);
+                        drawRect(backBuf, SCREEN_W, sx, sy, TILE_PX, 2, hi);
+                        drawRect(backBuf, SCREEN_W, sx, sy + 14, TILE_PX, 2, lo);
                     } else if (tile == T_STAIRS) {
-                        blitTileShaded(mainFb, SCREEN_W, sx, sy, stairsBitmap, flickMul);
+                        blitTileShaded(backBuf, SCREEN_W, sx, sy, stairsBitmap, flickMul);
                     } else {
-                        blitTileShaded(mainFb, SCREEN_W, sx, sy, floor_stoneBitmap, flickMul);
+                        blitTileShaded(backBuf, SCREEN_W, sx, sy, floor_stoneBitmap, flickMul);
                     }
                 } else if (fovVisited[idx]) {
                     /* fog: dim version */
                     if (tile == T_WALL) {
-                        blitTileShaded(mainFb, SCREEN_W, sx, sy, wall_stoneBitmap, dimMul);
+                        blitTileShaded(backBuf, SCREEN_W, sx, sy, wall_stoneBitmap, dimMul);
                     } else if (tile == T_STAIRS) {
-                        blitTileShaded(mainFb, SCREEN_W, sx, sy, stairsBitmap, dimMul);
+                        blitTileShaded(backBuf, SCREEN_W, sx, sy, stairsBitmap, dimMul);
                     } else {
-                        blitTileShaded(mainFb, SCREEN_W, sx, sy, floor_stoneBitmap, dimMul);
+                        blitTileShaded(backBuf, SCREEN_W, sx, sy, floor_stoneBitmap, dimMul);
                     }
                 } else {
-                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX, OC(1, 1, 2));
+                    drawRect(backBuf, SCREEN_W, sx, sy, TILE_PX, TILE_PX, OC(1, 1, 2));
                 }
             }
         }
@@ -743,7 +753,7 @@ int main(void)
                     const double tfl = 0.75 + 0.25 * std::sin(g.torchPhase * 9 + ph * 6.28)
                                          + 0.08 * std::sin(g.torchPhase * 23 + ph * 13);
                     const int tflI = (int)(tfl * 255);
-                    blitTileShaded(mainFb, SCREEN_W, t.x * TILE_PX - camX,
+                    blitTileShaded(backBuf, SCREEN_W, t.x * TILE_PX - camX,
                                    t.y * TILE_PX - camY, torchBitmap, tflI);
                 }
             }
@@ -753,7 +763,7 @@ int main(void)
         for (const Bolt& b : g.bolts) {
             const int sx = (int)(b.x * TILE_PX) - camX - 2;
             const int sy = (int)(b.y * TILE_PX) - camY - 2;
-            drawRect(mainFb, SCREEN_W, sx, sy, 4, 4,
+            drawRect(backBuf, SCREEN_W, sx, sy, 4, 4,
                      b.fromPlayer ? OC(31, 26, 6) : OC(31, 8, 8));
         }
 
@@ -770,41 +780,50 @@ int main(void)
             const u16 pc = OC(std::min(31, r), std::min(31, g2), std::min(31, b));
             if (part.type == 1) {
                 /* shard: rotated rectangle */
-                drawRect(mainFb, SCREEN_W, sx, sy, sz, sz / 2 + 1, pc);
+                drawRect(backBuf, SCREEN_W, sx, sy, sz, sz / 2 + 1, pc);
             } else if (part.type == 2) {
                 /* smoke: larger, faint */
                 const int ssz = sz + (int)(TILE_PX * 0.3 * (1.0 - lifeRatio));
-                drawRect(mainFb, SCREEN_W, sx - ssz / 4, sy - ssz / 4, ssz / 2, ssz / 2, pc);
+                drawRect(backBuf, SCREEN_W, sx - ssz / 4, sy - ssz / 4, ssz / 2, ssz / 2, pc);
             } else {
-                drawRect(mainFb, SCREEN_W, sx, sy, sz, sz, pc);
+                drawRect(backBuf, SCREEN_W, sx, sy, sz, sz, pc);
             }
         }
 
         /* Floating texts on BG */
-        fxRenderFloatTexts(mainFb, SCREEN_W, camX, camY, g);
+        fxRenderFloatTexts(backBuf, SCREEN_W, camX, camY, g);
 
         /* Depth fade */
         if (g.depthFadeT > 0) {
             const int alpha = fxGetDepthFadeAlpha(g.depthFadeT, 0.55);
             if (alpha > 0) {
                 u16 fadeColor = OC(alpha, alpha, alpha);
-                dmaClearFb(mainFb, fadeColor);
+                dmaClearFb(backBuf, fadeColor);
             }
         }
 
-        /* Damage flash overlay */
+        /* Damage flash overlay — smooth red vignette */
         if (g.damageFlashT > 0) {
-            const int a = (int)(g.damageFlashT / 0.35 * 8);
+            const int a = (int)(g.damageFlashT / 0.35 * 24);
             if (a > 0) {
-                const u16 red = OC(std::min(31, a + 15), 0, 0);
-                /* vignette-style: edges only */
-                for (int y = 0; y < SCREEN_H; y += 4) {
-                    for (int x = 0; x < SCREEN_W; x += 4) {
+                for (int y = 0; y < SCREEN_H; y += 2) {
+                    for (int x = 0; x < SCREEN_W; x += 2) {
                         const double dx = (x - SCREEN_W / 2.0) / (SCREEN_W / 2.0);
                         const double dy = (y - SCREEN_H / 2.0) / (SCREEN_H / 2.0);
                         const double dist = dx * dx + dy * dy;
-                        if (dist > 0.6) {
-                            drawRect(mainFb, SCREEN_W, x, y, 4, 4, red);
+                        if (dist > 0.35) {
+                            const int amt = (int)((dist - 0.35) / 0.65 * a);
+                            if (amt > 0) {
+                                const int idx = y * SCREEN_W + x;
+                                int or2 = ((backBuf[idx] >> 10) & 0x1F);
+                                int og  = ((backBuf[idx] >>  5) & 0x1F);
+                                int ob  = ( backBuf[idx]        & 0x1F);
+                                or2 = std::min(31, or2 + amt);
+                                backBuf[idx] = BIT(15) | RGB15(or2, og, ob);
+                                backBuf[idx + 1] = backBuf[idx];
+                                backBuf[idx + SCREEN_W] = backBuf[idx];
+                                backBuf[idx + SCREEN_W + 1] = backBuf[idx];
+                            }
                         }
                     }
                 }
@@ -816,7 +835,7 @@ int main(void)
             const double k = g.bossDeathFlashT / 0.35;
             const int a = (int)(k * 14);
             if (a > 0) {
-                drawRect(mainFb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H,
+                drawRect(backBuf, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H,
                          OC(std::min(31, 28 + a / 2), std::min(31, 23 + a / 3), std::min(31, 12 + a / 4)));
             }
         }
@@ -841,7 +860,7 @@ int main(void)
                        SpriteSize_16x16, SpriteColorFormat_Bmp,
                        gfx, -1, false, false, false, false, false);
             } else {
-                drawRect(mainFb, SCREEN_W, sx + 5, sy + 5, 6, 6,
+                drawRect(backBuf, SCREEN_W, sx + 5, sy + 5, 6, 6,
                          gi.kind == GI_GOLD ? OC(31,26,6) :
                          gi.kind == GI_GEM ? OC(10,20,31) :
                          gi.kind == GI_POTION ? OC(31,10,10) : OC(10,10,31));
@@ -881,27 +900,28 @@ int main(void)
                        SpriteSize_16x16, SpriteColorFormat_Bmp,
                        gfx, -1, false, false, false, false, false);
             } else {
-                drawRect(mainFb, SCREEN_W, sx + 3, sy + 3, 10, 10,
+                drawRect(backBuf, SCREEN_W, sx + 3, sy + 3, 10, 10,
                          monsterColor(m.type, mt.boss));
             }
             /* HP bar on BG (above sprite, not covered by OAM) */
             if (m.hp < m.maxHp) {
                 const int barW = 10;
                 const int hpW = (int)(barW * m.hp / m.maxHp);
-                drawRect(mainFb, SCREEN_W, sx + 3, sy + 1, hpW, 1, OC(31, 8, 8));
-                drawRect(mainFb, SCREEN_W, sx + 3 + hpW, sy + 1, barW - hpW, 1, OC(6, 2, 2));
+                drawRect(backBuf, SCREEN_W, sx + 3, sy + 1, hpW, 1, OC(31, 8, 8));
+                drawRect(backBuf, SCREEN_W, sx + 3 + hpW, sy + 1, barW - hpW, 1, OC(6, 2, 2));
             }
             /* windup flash (red glow) */
             if (m.winding) {
-                drawRect(mainFb, SCREEN_W, sx + 2, sy + 2, 12, 12, OC(15, 3, 3));
+                drawRect(backBuf, SCREEN_W, sx + 2, sy + 2, 12, 12, OC(15, 3, 3));
             }
         }
 
         /* Player as OAM sprite (always visible) */
         if (oid < 128) {
-            /* walk bob */
+            /* walk bob — only when moving */
             int poffY = 0;
-            if (!g.player.dead) {
+            const bool isMoving = (g.player.fx != 0 || g.player.fy != 0);
+            if (!g.player.dead && isMoving) {
                 poffY = (int)(std::sin(g.gameTime * 12.0) * 1.5);
             }
             const int sx = (int)(g.player.x * TILE_PX) - camX - 8;
@@ -914,23 +934,25 @@ int main(void)
                     showSprite = ((int)(g.player.invulnT * 12) % 2 == 0);
                 }
                 if (showSprite) {
+                    const bool hflip = (g.player.fx < -0.01);
                     oamSet(&oamMain, oid++, sx, sy, 0, 15,
                            SpriteSize_16x16, SpriteColorFormat_Bmp,
-                           gfx, -1, false, false, false, false, false);
+                           gfx, -1, false, false, hflip, false, false);
                 }
             } else {
                 const u16 pc = g.player.dead ? OC(12, 8, 8) : OC(10, 28, 10);
-                drawRect(mainFb, SCREEN_W, sx + 2, sy + 2, 12, 12, pc);
+                drawRect(backBuf, SCREEN_W, sx + 2, sy + 2, 12, 12, pc);
             }
         }
 
         /* Minimap overlay on main screen */
         if (mapVisible) {
-            drawMinimap(mainFb, SCREEN_W, layout, g.player, g.monsters, fovVisited);
+            drawMinimap(backBuf, SCREEN_W, layout, g.player, g.monsters, fovVisited);
         }
 
-        /* --- VBlank: apply OAM changes --- */
+        /* --- VBlank: DMA back buffer to VRAM, then apply OAM changes --- */
         swiWaitForVBlank();
+        dmaCopy(backBuf, vramFb, SCREEN_W * SCREEN_H * sizeof(u16));
         oamUpdate(&oamMain);
 
         /* --- Sub screen HUD --- */

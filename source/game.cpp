@@ -428,27 +428,33 @@ void checkItemPickup(GameState& g)
                 case GI_GOLD:
                     p.gold += it.amount;
                     spawnFloatText(g, p.x, p.y - 0.7, ("+" + std::to_string(it.amount) + " Au").c_str(), 1);
+                    sfxPickup();
                     break;
                 case GI_GEM:
                     p.gold += it.amount;
                     spawnFloatText(g, p.x, p.y - 0.7, ("+" + std::to_string(it.amount) + " Au").c_str(), 4);
+                    sfxGem();
                     break;
                 case GI_POTION:
                     p.potions++;
                     spawnFloatText(g, p.x, p.y - 0.7, "+Pozione", 2);
+                    sfxPotion();
                     break;
                 case GI_MANA_POTION:
                     p.manaPotions++;
                     spawnFloatText(g, p.x, p.y - 0.7, "+PozMana", 4);
+                    sfxMana();
                     break;
                 case GI_POWER:
                     applyPowerup(p, it.powerupType);
                     spawnFloatText(g, p.x, p.y - 0.7, POWERUP_DEFS[it.powerupType].name, 5);
+                    sfxPower();
                     break;
                 case GI_EQUIP:
                     tryEquipOrSalvage(p, it.equip, *g.rng);
                     spawnFloatText(g, p.x, p.y - 0.7, equipRarityName(it.equip.rarity),
                                    it.equip.rarity >= EQ_EPICO ? (it.equip.rarity == EQ_LEGGENARIO ? 6 : 5) : 0);
+                    sfxPower();
                     break;
             }
             continue; /* pick up */
@@ -506,6 +512,7 @@ bool buyFromMerchant(GameState& g, Rng& rng, int kind)
     const int cost = merchantPrice(kind, g.depth);
     if (p.gold < cost) return false;
     p.gold -= cost;
+    sfxPickup();
     switch (kind) {
         case 0: p.potions++; break;
         case 1: p.manaPotions++; break;
@@ -591,6 +598,7 @@ void handleDeath(Player& p)
 {
     p.dead = true;
     p.respawnT = 3.2;
+    sfxDeath();
 }
 
 void handleRespawn(GameState& g)
@@ -609,6 +617,7 @@ void handleRespawn(GameState& g)
         p.x = g.layout->spawn.x + 0.5;
         p.y = g.layout->spawn.y + 0.5;
     }
+    sfxRevive();
 }
 
 /* ---------------------------------------------------------------------
@@ -629,6 +638,7 @@ void playerAttack(GameState& g, Rng& rng)
     p.atkT = c.atkCooldown;
     if (c.manaCost) p.mp -= c.manaCost;
     if (p.buffFocus > 0) p.atkT *= 0.5;
+    sfxSwing();
 
     const double autoRange = c.ranged ? c.range : std::max(c.range + 0.7, 2.1);
     const Monster* nearest = nullptr;
@@ -656,10 +666,12 @@ void playerAttack(GameState& g, Rng& rng)
             if (c.crit > 0 && rng.next() < c.crit) amount *= 2;
             m.hp -= amount;
             spawnFloatText(g, m.x, m.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
+            if (amount >= c.dmgMax) sfxCrit(); else sfxHit();
             if (m.hp <= 0) {
                 const MonsterType& t = *getMonsterType(m.type);
                 p.gold += t.goldMin + (int)std::floor(rng.next() * (t.goldMax - t.goldMin + 1));
                 spawnMonsterDrops(g, rng, m);
+                sfxKill();
             }
         }
     } else {
@@ -691,6 +703,7 @@ static void dealMeleeDamageToPlayer(GameState& g, Monster& m, double mult, Rng& 
     m.atkAnimT = 0.3;
     addDamageFlash(g);
     addShake(g, 0.22);
+    sfxHurt();
     spawnFloatText(g, p.x, p.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
     spawnBurst(g.particles, m.x + m.fx * 0.4, m.y + m.fy * 0.4, 1, 0.2, 0.2, 3);
     const MonsterType& mt = *getMonsterType(m.type);
@@ -1071,10 +1084,12 @@ static void updateBolts(GameState& g, Rng& rng, double dt)
                 if (dx * dx + dy * dy <= b.r * b.r) {
                     m.hp -= b.dmg;
                     spawnFloatText(g, m.x, m.y - 0.5, ("-" + std::to_string(b.dmg)).c_str(), 3);
+                    sfxHit();
                     if (m.hp <= 0) {
                         const MonsterType& t = *getMonsterType(m.type);
                         p.gold += t.goldMin + (int)std::floor(rng.next() * (t.goldMax - t.goldMin + 1));
                         spawnMonsterDrops(g, rng, m);
+                        sfxKill();
                     }
                     used = true;
                     break;
@@ -1092,6 +1107,7 @@ static void updateBolts(GameState& g, Rng& rng, double dt)
                 p.invulnT = 0.45;
                 addDamageFlash(g);
                 addShake(g, 0.22);
+                sfxHurt();
                 spawnFloatText(g, p.x, p.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
                 if (p.hp <= 0) handleDeath(p);
                 used = true;
@@ -1166,6 +1182,7 @@ void updateCombat(GameState& g, Rng& rng, double dt)
             g.bossActive = true;
             applyBossGates(*const_cast<Layout*>(g.layout), true);
             addShake(g, 0.25);
+            sfxBossRoar();
         }
     }
 
@@ -1216,6 +1233,8 @@ void updateCombat(GameState& g, Rng& rng, double dt)
                 g.hitstopT = 0.22;
                 applyBossGates(*const_cast<Layout*>(g.layout), false);
                 addShake(g, 1.2);
+                sfxBossKill();
+                sfxBoom();
                 spawnBurst(g.particles, m.x, m.y, 1.0, 0.8, 0.2, 12);
                 spawnBurst(g.particles, m.x - 0.4, m.y, 1.0, 0.6, 0.2, 12);
                 spawnBurst(g.particles, m.x + 0.4, m.y, 1.0, 0.8, 0.2, 12);
