@@ -86,6 +86,29 @@ static u16* loadSpr(const void* data)
     return gfx;
 }
 
+static u16* genMonsterSpr(int r5, int g5, int b5)
+{
+    u16* gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16, SpriteColorFormat_Bmp);
+    if (!gfx) return 0;
+    for (int y = 0; y < 16; y++) {
+        for (int x = 0; x < 16; x++) {
+            const int dx = x - 8, dy = y - 9;
+            const int d2 = dx * dx + dy * dy;
+            const bool body = d2 <= 36 && y >= 3;
+            const bool head = (x - 8) * (x - 8) + (y - 4) * (y - 4) <= 16;
+            if (body || head) {
+                int dr = r5, dg = g5, db = b5;
+                if (d2 > 30 || !body) { dr = dr * 7 / 8; dg = dg * 7 / 8; db = db * 7 / 8; }
+                if ((x == 6 && y == 4) || (x == 10 && y == 4)) { dr = 28; dg = 28; db = 28; }
+                gfx[y * 16 + x] = BIT(15) | RGB15(dr, dg, db);
+            } else {
+                gfx[y * 16 + x] = 0x0000;
+            }
+        }
+    }
+    return gfx;
+}
+
 static void initSprites()
 {
     for (int i = 0; i < 256; i++) sprMonster[i] = 0;
@@ -96,6 +119,14 @@ static void initSprites()
     sprHero[1] = loadSpr(hero_monacoBitmap);
     sprHero[2] = loadSpr(hero_negromanteBitmap);
     sprHero[3] = loadSpr(hero_paladinoBitmap);
+
+    sprMonster['r'] = genMonsterSpr(14, 10,  8);
+    sprMonster['b'] = genMonsterSpr(10,  8, 14);
+    sprMonster['g'] = genMonsterSpr(10, 16,  8);
+    sprMonster['j'] = genMonsterSpr( 8, 18,  8);
+    sprMonster['J'] = genMonsterSpr(12, 22, 12);
+    sprMonster['s'] = genMonsterSpr(22, 22, 22);
+    sprMonster['z'] = genMonsterSpr(12, 14, 10);
 
     sprMonster['o'] = loadSpr(mon_orcoBitmap);
     sprMonster['W'] = loadSpr(mon_spettroBitmap);
@@ -125,15 +156,15 @@ static void initSprites()
 static int heroIdx(const char* key)
 {
     if (!key) return 0;
-    if (std::strcmp(key, "paladino") == 0)   return 3;
-    if (std::strcmp(key, "negromante") == 0) return 2;
-    if (std::strcmp(key, "monaco") == 0)     return 1;
-    if (std::strcmp(key, "bardo") == 0)      return 0;
-    if (std::strcmp(key, "mago") == 0)       return 2;
-    if (std::strcmp(key, "prof") == 0)       return 3;
     if (std::strcmp(key, "guerriero") == 0)  return 3;
-    if (std::strcmp(key, "ladro") == 0)      return 0;
+    if (std::strcmp(key, "paladino") == 0)   return 3;
+    if (std::strcmp(key, "mago") == 0)       return 2;
+    if (std::strcmp(key, "negromante") == 0) return 2;
+    if (std::strcmp(key, "prof") == 0)       return 2;
     if (std::strcmp(key, "ranger") == 0)     return 0;
+    if (std::strcmp(key, "ladro") == 0)      return 0;
+    if (std::strcmp(key, "bardo") == 0)      return 0;
+    if (std::strcmp(key, "monaco") == 0)     return 1;
     return 0;
 }
 
@@ -802,27 +833,29 @@ int main(void)
             }
         }
 
-        /* Damage flash overlay — smooth red vignette */
+        /* Damage flash overlay — smooth red vignette (fast integer path) */
         if (g.damageFlashT > 0) {
             const int a = (int)(g.damageFlashT / 0.35 * 24);
             if (a > 0) {
-                for (int y = 0; y < SCREEN_H; y += 2) {
-                    for (int x = 0; x < SCREEN_W; x += 2) {
-                        const double dx = (x - SCREEN_W / 2.0) / (SCREEN_W / 2.0);
-                        const double dy = (y - SCREEN_H / 2.0) / (SCREEN_H / 2.0);
-                        const double dist = dx * dx + dy * dy;
-                        if (dist > 0.35) {
-                            const int amt = (int)((dist - 0.35) / 0.65 * a);
-                            if (amt > 0) {
+                for (int y = 0; y < SCREEN_H; y += 3) {
+                    const int dyc = y - SCREEN_H / 2;
+                    const int dy2 = dyc * dyc;
+                    for (int x = 0; x < SCREEN_W; x += 3) {
+                        const int dxc = x - SCREEN_W / 2;
+                        const int dist2 = dxc * dxc + dy2;
+                        if (dist2 > 6400) {
+                            const int amt = (dist2 - 6400) * a / 10000;
+                            if (amt > 0 && amt < 24) {
                                 const int idx = y * SCREEN_W + x;
-                                int or2 = ((backBuf[idx] >> 10) & 0x1F);
+                                int or2 = ((backBuf[idx] >> 10) & 0x1F) + amt;
                                 int og  = ((backBuf[idx] >>  5) & 0x1F);
                                 int ob  = ( backBuf[idx]        & 0x1F);
-                                or2 = std::min(31, or2 + amt);
-                                backBuf[idx] = BIT(15) | RGB15(or2, og, ob);
-                                backBuf[idx + 1] = backBuf[idx];
-                                backBuf[idx + SCREEN_W] = backBuf[idx];
-                                backBuf[idx + SCREEN_W + 1] = backBuf[idx];
+                                if (or2 > 31) or2 = 31;
+                                const u16 c = BIT(15) | RGB15(or2, og, ob);
+                                backBuf[idx] = c;
+                                backBuf[idx + 1] = c;
+                                backBuf[idx + SCREEN_W] = c;
+                                backBuf[idx + SCREEN_W + 1] = c;
                             }
                         }
                     }
