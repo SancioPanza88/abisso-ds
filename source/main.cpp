@@ -61,6 +61,7 @@ extern "C" {
     extern const unsigned short wall_stoneBitmap[];
     extern const unsigned short floor_stoneBitmap[];
     extern const unsigned short stairsBitmap[];
+    extern const unsigned short torchBitmap[];
 }
 
 /* --- OAM sprite GFX pointers --- */
@@ -162,25 +163,6 @@ static void blitTileShaded(u16* fb, int fbW, int sx, int sy,
 }
 
 /* --- Draw a filled 16x16 tile with bevels (walls get 3D effect) --- */
-static void drawTileWithBevel(u16* fb, int fbW, int sx, int sy, u16 baseColor, bool isWall, int shadeMul)
-{
-    /* base fill */
-    drawRect(fb, fbW, sx, sy, TILE_PX, TILE_PX, baseColor);
-    /* top bevel highlight */
-    if (isWall) {
-        int r = ((baseColor >> 10) & 0x1F);
-        int g = ((baseColor >>  5) & 0x1F);
-        int b = ( baseColor        & 0x1F);
-        r = std::min(31, r + 8); g = std::min(31, g + 7); b = std::min(31, b + 5);
-        u16 hi = BIT(15) | RGB15(r, g, b);
-        drawRect(fb, fbW, sx, sy, TILE_PX, 2, hi);
-        /* bottom bevel shadow */
-        r = std::max(0, r - 14); g = std::max(0, g - 12); b = std::max(0, b - 8);
-        u16 lo = BIT(15) | RGB15(r, g, b);
-        drawRect(fb, fbW, sx, sy + TILE_PX - 2, TILE_PX, 2, lo);
-    }
-}
-
 /* --- Monster fallback colors (for types without sprites) --- */
 static u16 monsterColor(char type, bool boss)
 {
@@ -288,10 +270,6 @@ static void drawMinimap(u16* fb, int fbW, const Layout& l,
 static int selectClass()
 {
     const int NUM_CLASSES = 9;
-    const char* keys[] = {
-        "guerriero", "ladro", "mago", "ranger", "prof",
-        "paladino", "negromante", "bardo", "monaco"
-    };
     const char* names[] = {
         "Guerriero", "Ladro", "Mago", "Ranger", "Prof",
         "Paladino", "Negromante", "Bardo", "Monaco"
@@ -760,8 +738,6 @@ int main(void)
         for (const Pt& t : layout.torches) {
             if (t.x >= 0 && t.x < layout.w && t.y >= 0 && t.y < layout.h) {
                 if (fovVisible[(size_t)t.y * layout.w + t.x]) {
-                    const int sx = t.x * TILE_PX - camX + 4;
-                    const int sy = t.y * TILE_PX - camY + 4;
                     /* per-torch phase + dual-frequency flicker */
                     const double ph = ((t.x * 7 + t.y * 13) % 20) / 20.0;
                     const double tfl = 0.75 + 0.25 * std::sin(g.torchPhase * 9 + ph * 6.28)
