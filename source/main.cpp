@@ -295,64 +295,88 @@ static void renderSubHud(const GameState& g, bool forceRedraw, int& lastDepth,
         return;
 
     const Player& p = g.player;
+    char buf[64];
 
-    /* If merchant or equip overlay is active, show that instead */
+    /* If merchant overlay is active, show that */
     if (uiIsMerchantVisible()) {
-        iprintf("\x1b[2J");
-        iprintf(" == MERCANTE ==\n\n");
-        iprintf(" Oro: %d\n\n", p.gold);
-        iprintf(" 1) Pozione HP:  %d Au\n", merchantPrice(0, g.depth));
-        iprintf(" 2) Pozione MP:  %d Au\n", merchantPrice(1, g.depth));
-        iprintf(" 3) Potenziamento:%d Au\n", merchantPrice(2, g.depth));
-        iprintf(" 4) Equip:       %d Au\n\n", merchantPrice(3, g.depth));
+        /* Use cursor positioning to avoid flicker */
+        iprintf("\x1b[0;0H");  /* cursor to 0,0 */
+        iprintf(" == MERCANTE ==  \n\n");
+        iprintf(" Oro: %-5d       \n\n", p.gold);
+        iprintf(" 1)Poz HP:  %3dAu \n", merchantPrice(0, g.depth));
+        iprintf(" 2)Poz MP:  %3dAu \n", merchantPrice(1, g.depth));
+        iprintf(" 3)Potenza: %3dAu \n", merchantPrice(2, g.depth));
+        iprintf(" 4)Equip:   %3dAu \n\n", merchantPrice(3, g.depth));
         iprintf(" A:Compr1 B:Compr2\n");
         iprintf(" X:Compr3 Y:Compr4\n");
-        iprintf(" L/R:Chiudi\n");
+        iprintf(" L/R:Chiudi       \n");
+        for (int i = 11; i < 24; i++) {
+            iprintf("\x1b[%d;0H                    ", i);
+        }
         needRedraw = false;
         lastDepth = g.depth;
         return;
     }
 
+    /* If equipment overlay is active, show that */
     if (uiIsEquipVisible()) {
-        iprintf("\x1b[2J");
-        iprintf(" == EQUIP ==\n\n");
+        iprintf("\x1b[0;0H");
+        iprintf(" == EQUIPAGGIAMENTO == \n\n");
         for (int i = 0; i < EQ_SLOT_COUNT; i++) {
             const EquipItem& eq = p.equip[i];
             const char* slotName = equipSlotName((EquipSlot)i);
             if (eq.rarity > 0 || eq.stats.hp > 0) {
-                iprintf(" %s:%s\n", slotName, equipRarityName(eq.rarity));
-                iprintf("  HP:%d DMG:%d%%\n", eq.stats.hp, eq.stats.dmgPct);
+                iprintf(" %s:%-11s \n", slotName, equipRarityName(eq.rarity));
+                iprintf("  HP:%-3d DMG:%-3d%% \n", eq.stats.hp, eq.stats.dmgPct);
             } else {
-                iprintf(" %s:---\n", slotName);
+                iprintf(" %s:---           \n", slotName);
+                iprintf("                   \n");
             }
         }
-        iprintf("\n L/R:Chiudi\n");
+        iprintf("\n L/R:Chiudi       \n");
+        for (int i = 14; i < 24; i++) {
+            iprintf("\x1b[%d;0H                    ", i);
+        }
         needRedraw = false;
         lastDepth = g.depth;
         return;
     }
 
-    iprintf("\x1b[2J");
-    iprintf("  ABISSO DS\n");
-    iprintf("  Piano %d\n\n", g.depth);
+    /* Normal HUD */
+    iprintf("\x1b[0;0H");
+    iprintf("  ABISSO DS   \n");
+    iprintf("  Piano %-2d    \n\n", g.depth);
     if (p.dead) {
-        iprintf("  SEI MORTO!\n");
-        iprintf("  Respawn: %.0fs\n", p.respawnT);
+        iprintf("  SEI MORTO!   \n");
+        std::snprintf(buf, sizeof(buf), "  Respawn: %.0fs  ", p.respawnT);
+        iprintf("%s\n", buf);
     } else {
-        iprintf("  HP: %d/%d\n", p.hp, p.maxHp);
-        if (p.maxMp > 0)
-            iprintf("  MP: %d/%d\n", p.mp, p.maxMp);
-        iprintf("  Oro: %d\n", p.gold);
-        iprintf("  PozHP:%d  PozMP:%d\n", p.potions, p.manaPotions);
-        if (p.buffRage > 0)   iprintf("  FURIA %.0fs\n", p.buffRage);
-        if (p.buffShield > 0) iprintf("  SCUDO %.0fs\n", p.buffShield);
-        if (p.buffHaste > 0)  iprintf("  FRETTA %.0fs\n", p.buffHaste);
-        if (p.buffFocus > 0)  iprintf("  FOCUS %.0fs\n", p.buffFocus);
-        if (g.bossFight)      iprintf("  *** BOSS ***\n");
+        std::snprintf(buf, sizeof(buf), "  HP: %d/%d     ", p.hp, p.maxHp);
+        iprintf("%s\n", buf);
+        if (p.maxMp > 0) {
+            std::snprintf(buf, sizeof(buf), "  MP: %d/%d     ", p.mp, p.maxMp);
+            iprintf("%s\n", buf);
+        } else {
+            iprintf("               \n");
+        }
+        std::snprintf(buf, sizeof(buf), "  Oro:%-5d     ", p.gold);
+        iprintf("%s\n", buf);
+        std::snprintf(buf, sizeof(buf), "  PozHP:%d MP:%d  ", p.potions, p.manaPotions);
+        iprintf("%s\n", buf);
+        int by = 10;
+        if (p.buffRage > 0)   { iprintf("\x1b[%d;0H FURIA  %.0fs  ", by++, p.buffRage); }
+        if (p.buffShield > 0) { iprintf("\x1b[%d;0H SCUDO  %.0fs  ", by++, p.buffShield); }
+        if (p.buffHaste > 0)  { iprintf("\x1b[%d;0H FRETTA %.0fs  ", by++, p.buffHaste); }
+        if (p.buffFocus > 0)  { iprintf("\x1b[%d;0H FOCUS  %.0fs  ", by++, p.buffFocus); }
+        if (g.bossFight)      { iprintf("\x1b[%d;0H *** BOSS ***  ", by++); }
+        /* clear remaining buff lines */
+        for (int i = by; i < 14; i++) {
+            iprintf("\x1b[%d;0H               ", i);
+        }
     }
-    iprintf("\n DP:Muovi A:Attacca\n");
-    iprintf(" B:PozHP X:PozMP\n");
-    iprintf(" Y:Interact L:Abil\n");
+    iprintf("\x1b[15;0H DP:Muovi A:Atk ");
+    iprintf("\x1b[16;0H B:PozHP X:PozMP ");
+    iprintf("\x1b[17;0H Y:Use L:Abil   ");
     needRedraw = false;
     lastDepth = g.depth;
 }
@@ -410,6 +434,7 @@ int main(void)
     int lastDepth = -1;
     bool needSubRedraw = true;
     bool mapVisible = false;
+    int prevHp = -1, prevMp = -1, prevGold = -1;
 
     while (pmMainLoop()) {
         scanKeys();
@@ -566,6 +591,14 @@ int main(void)
         updateCombat(g, rng, dt);
         checkItemPickup(g);
         tickBuffs(g.player, dt);
+
+        /* Detect value changes for sub screen redraw */
+        if (g.player.hp != prevHp || g.player.mp != prevMp || g.player.gold != prevGold) {
+            needSubRedraw = true;
+            prevHp = g.player.hp;
+            prevMp = g.player.mp;
+            prevGold = g.player.gold;
+        }
 
         /* --- Camera --- */
         int camX = (int)(g.player.x * TILE_PX) - SCREEN_W / 2;
@@ -747,7 +780,7 @@ int main(void)
         oamUpdate(&oamMain);
 
         /* --- Sub screen HUD --- */
-        renderSubHud(g, needSubRedraw, lastDepth, needSubRedraw);
+        renderSubHud(g, true, lastDepth, needSubRedraw);
     }
 
     return 0;
