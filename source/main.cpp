@@ -68,7 +68,7 @@ extern "C" {
 static u16 backBuf[SCREEN_W * SCREEN_H];
 
 /* --- OAM sprite GFX pointers --- */
-static u16* sprHero[4];
+static u16* sprHero[9];
 static u16* sprMonster[256];
 static u16* sprItem[8];
 
@@ -109,16 +109,57 @@ static u16* genMonsterSpr(int r5, int g5, int b5)
     return gfx;
 }
 
+static u16* genHeroSpr(int bodyR, int bodyG, int bodyB, int headR, int headG, int headB, int hatType)
+{
+    u16* gfx = oamAllocateGfx(&oamMain, SpriteSize_16x16, SpriteColorFormat_Bmp);
+    if (!gfx) return 0;
+    for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+            gfx[y * 16 + x] = 0x0000;
+    for (int y = 0; y < 16; y++) {
+        for (int x = 0; x < 16; x++) {
+            const bool head = (x >= 5 && x <= 10 && y >= 2 && y <= 6);
+            const bool body = (x >= 4 && x <= 11 && y >= 7 && y <= 13);
+            const bool armL  = (x >= 3 && x <= 4  && y >= 7 && y <= 11);
+            const bool armR  = (x >= 11 && x <= 12 && y >= 7 && y <= 11);
+            const bool legL  = (x >= 5 && x <= 7  && y >= 14 && y <= 15);
+            const bool legR  = (x >= 8 && x <= 10 && y >= 14 && y <= 15);
+            const bool hat1  = (hatType == 1 && x >= 5 && x <= 10 && y >= 0 && y <= 2);
+            const bool hat2  = (hatType == 2 && x >= 4 && x <= 11 && y >= 0 && y <= 3);
+            const bool hat3  = (hatType == 3 && ((y == 0 && x >= 7 && x <= 8) || (y == 1 && x >= 6 && x <= 9) || (y == 2 && x >= 5 && x <= 10) || (y == 3 && x >= 5 && x <= 10)));
+            u16 px = 0;
+            if (head) {
+                px = BIT(15) | RGB15(headR, headG, headB);
+                if ((x == 6 && y == 4) || (x == 9 && y == 4))
+                    px = BIT(15) | RGB15(28, 28, 28);
+            } else if (body || armL || armR) {
+                px = BIT(15) | RGB15(bodyR, bodyG, bodyB);
+            } else if (legL || legR) {
+                px = BIT(15) | RGB15(bodyR * 3 / 4, bodyG * 3 / 4, bodyB * 3 / 4);
+            } else if (hat1 || hat2 || hat3) {
+                px = BIT(15) | RGB15(headR / 2, headG / 2, headB / 2);
+            }
+            if (px) gfx[y * 16 + x] = px;
+        }
+    }
+    return gfx;
+}
+
 static void initSprites()
 {
     for (int i = 0; i < 256; i++) sprMonster[i] = 0;
     for (int i = 0; i < 8; i++) sprItem[i] = 0;
-    for (int i = 0; i < 4; i++) sprHero[i] = 0;
+    for (int i = 0; i < 9; i++) sprHero[i] = 0;
 
     sprHero[0] = loadSpr(hero_bardoBitmap);
     sprHero[1] = loadSpr(hero_monacoBitmap);
     sprHero[2] = loadSpr(hero_negromanteBitmap);
     sprHero[3] = loadSpr(hero_paladinoBitmap);
+    sprHero[4] = genHeroSpr(22, 6, 6, 22, 18, 14, 0);
+    sprHero[5] = genHeroSpr(10, 10, 14, 22, 18, 14, 0);
+    sprHero[6] = genHeroSpr(8, 8, 22, 22, 18, 14, 1);
+    sprHero[7] = genHeroSpr(8, 16, 8, 22, 18, 14, 0);
+    sprHero[8] = genHeroSpr(18, 14, 6, 22, 18, 14, 2);
 
     sprMonster['r'] = genMonsterSpr(14, 10,  8);
     sprMonster['b'] = genMonsterSpr(10,  8, 14);
@@ -156,13 +197,13 @@ static void initSprites()
 static int heroIdx(const char* key)
 {
     if (!key) return 0;
-    if (std::strcmp(key, "guerriero") == 0)  return 3;
+    if (std::strcmp(key, "guerriero") == 0)  return 4;
+    if (std::strcmp(key, "ladro") == 0)      return 5;
+    if (std::strcmp(key, "mago") == 0)       return 6;
+    if (std::strcmp(key, "ranger") == 0)     return 7;
+    if (std::strcmp(key, "prof") == 0)       return 8;
     if (std::strcmp(key, "paladino") == 0)   return 3;
-    if (std::strcmp(key, "mago") == 0)       return 2;
     if (std::strcmp(key, "negromante") == 0) return 2;
-    if (std::strcmp(key, "prof") == 0)       return 2;
-    if (std::strcmp(key, "ranger") == 0)     return 0;
-    if (std::strcmp(key, "ladro") == 0)      return 0;
     if (std::strcmp(key, "bardo") == 0)      return 0;
     if (std::strcmp(key, "monaco") == 0)     return 1;
     return 0;
