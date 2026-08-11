@@ -64,7 +64,6 @@ extern "C" {
 static u16* sprHero[4];
 static u16* sprMonster[256];
 static u16* sprItem[8];
-static u16* sprDefault;
 
 static u16* loadSpr(const void* data)
 {
@@ -166,7 +165,7 @@ static void drawRect(u16* fb, int fbW, int x, int y, int w, int h, u16 color)
 static void dmaClearFb(u16* fb, u16 color)
 {
     const u32 fill = (u32)color | ((u32)color << 16);
-    dmaFillWords(&fill, fb, SCREEN_W * SCREEN_H * sizeof(u16));
+    dmaFillWords(fill, fb, SCREEN_W * SCREEN_H * sizeof(u16));
 }
 
 int main(void)
