@@ -485,6 +485,8 @@ static void newRun(int classIdx)
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
+    powerOn(POWER_ALL_2D);
+
     videoSetMode(MODE_5_2D);
     videoSetModeSub(MODE_5_2D);
     vramSetBankA(VRAM_A_MAIN_BG);
