@@ -485,53 +485,27 @@ static void newRun(int classIdx)
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
-    powerOn(POWER_ALL_2D);
-
+    /* TEST: video init identica all'esempio ufficiale 16bit_color_bmp */
     videoSetMode(MODE_5_2D);
-    videoSetModeSub(MODE_5_2D);
+    videoSetModeSub(MODE_0_2D);
     vramSetBankA(VRAM_A_MAIN_BG);
-    vramSetBankC(VRAM_C_SUB_BG);
 
-    bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-    bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
+    int bg = bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
 
-    abisso::sfxInit();
-    abisso::uiInit();
+    /* Fill main screen with bright red */
+    u16* mainFb = (u16*)bgGetGfxPtr(bg);
+    for (int i = 0; i < 256 * 256; i++)
+        mainFb[i] = RGB15(31, 0, 0);
 
-    g.worldSeed = randomSeedFromRtc();
-    g.combatRng = abisso::Rng(g.worldSeed ^ 0x9E3779B9u);
-    g.gs.rng = &g.combatRng;
-    g.depth = 1;
-    g.layout = abisso::generateDepth(g.depth, "main", g.worldSeed);
-    g.gs.layout = &g.layout;
-    newRun(0);
+    /* Fill sub screen with bright blue */
+    u16* subFb = (u16*)BG_GFX_SUB;
+    for (int i = 0; i < 256 * 256; i++)
+        subFb[i] = RGB15(0, 0, 31);
 
     while (pmMainLoop()) {
         swiWaitForVBlank();
-
-        /* hitstop: skip update */
-        if (g.gs.hitstopT <= 0) {
-            updateInput();
-        }
-
+        scanKeys();
         if (keysDown() & KEY_START) break;
-
-        abisso::updateCombat(g.gs, g.combatRng, 1.0 / 60.0);
-        updateFov();
-        centerCamera();
-
-        /* shake */
-        int shakeCamX = g.camX, shakeCamY = g.camY;
-        abisso::fxUpdateShake(g.gs, shakeCamX, shakeCamY);
-
-        /* render top screen */
-        renderWorld();
-
-        /* render sub-screen UI */
-        u16* const sub_fb = (u16*)BG_GFX_SUB;
-        abisso::uiRender(sub_fb, 256, g.gs, g.showMap ? 1 : 0);
-
-        g.frame++;
     }
 
     return 0;
