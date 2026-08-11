@@ -877,11 +877,12 @@ int main(void)
             if (!fovVisible[(size_t)mty * layout.w + mtx]) continue;
             /* walk bob + windup flash + boss lift */
             int offY = 0;
-            if (m.state == 'c' || m.state == 'w') {
-                offY = (int)(std::sin(g.gameTime * 8.0 + m.x * 3.7) * 1.5);
+            const bool mMoving = (m.state == 'c' || m.state == 'w');
+            if (mMoving) {
+                offY = (int)(std::sin(g.gameTime * 10.0 + m.x * 5.3 + m.y * 2.7) * 2.0);
             }
             if (m.winding) {
-                offY -= 1;
+                offY -= 2;
             }
             if (m.bossFlying) {
                 offY -= 6;
@@ -889,16 +890,17 @@ int main(void)
             /* attack squash stretch */
             int offX = 0;
             if (m.atkAnimT > 0) {
-                offY -= 1;
+                offY -= 2;
             }
             const int sx = (int)(m.x * TILE_PX) - camX - 8 + offX;
             const int sy = (int)(m.y * TILE_PX) - camY - 8 + offY;
             if (sx < -16 || sx > SCREEN_W + 16 || sy < -16 || sy > SCREEN_H + 16) continue;
             u16* gfx = sprMonster[(unsigned char)m.type];
             if (gfx) {
+                const bool mhflip = (m.fx < -0.01);
                 oamSet(&oamMain, oid++, sx, sy, 1, 15,
                        SpriteSize_16x16, SpriteColorFormat_Bmp,
-                       gfx, -1, false, false, false, false, false);
+                       gfx, -1, false, false, mhflip, false, false);
             } else {
                 drawRect(backBuf, SCREEN_W, sx + 3, sy + 3, 10, 10,
                          monsterColor(m.type, mt.boss));
@@ -910,9 +912,9 @@ int main(void)
                 drawRect(backBuf, SCREEN_W, sx + 3, sy + 1, hpW, 1, OC(31, 8, 8));
                 drawRect(backBuf, SCREEN_W, sx + 3 + hpW, sy + 1, barW - hpW, 1, OC(6, 2, 2));
             }
-            /* windup flash (red glow) */
+            /* windup flash — draw slightly larger so it peeks past sprite edges */
             if (m.winding) {
-                drawRect(backBuf, SCREEN_W, sx + 2, sy + 2, 12, 12, OC(15, 3, 3));
+                drawRect(backBuf, SCREEN_W, sx - 1, sy - 1, 18, 18, OC(15, 3, 3));
             }
         }
 
