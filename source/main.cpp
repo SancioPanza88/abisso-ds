@@ -291,8 +291,8 @@ static void newRun(int classIdx);
 static void updateInput()
 {
     scanKeys();
-    const u32 held = keysHeld();
-    const u32 down = keysDown();
+    u32 held = keysHeld();
+    u32 down = keysDown();
     abisso::Player& p = g.gs.player;
 
     /* touch */
@@ -482,12 +482,6 @@ static void newRun(int classIdx)
     g.gs.floatTexts.clear();
 }
 
-static void renderMinimap()
-{
-    /* render minimap on sub-screen (called from uiRender) */
-    /* minimap is handled via the mapVisible flag in uiRender */
-}
-
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
@@ -501,7 +495,7 @@ int main(int argc, char* argv[])
     bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
 
     /* sub-screen: bg0 per HUD testuale come fallback */
-    int subBg = bgInit(2, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
+    bgInit(2, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
 
     abisso::sfxInit();
     abisso::uiInit();
