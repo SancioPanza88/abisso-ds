@@ -1120,6 +1120,9 @@ void updateCombat(GameState& g, Rng& rng, double dt)
     /* damage flash decay */
     if (g.damageFlashT > 0) g.damageFlashT -= dt;
 
+    /* boss death flash decay */
+    if (g.bossDeathFlashT > 0) g.bossDeathFlashT -= dt;
+
     /* depth fade */
     if (g.depthFadeT > 0) g.depthFadeT -= dt;
 
@@ -1209,9 +1212,22 @@ void updateCombat(GameState& g, Rng& rng, double dt)
                 g.bossFight = false;
                 g.bossActive = false;
                 g.bossDead = true;
+                g.bossDeathFlashT = 0.35;
+                g.hitstopT = 0.22;
                 applyBossGates(*const_cast<Layout*>(g.layout), false);
-                addShake(g, 0.45);
+                addShake(g, 1.2);
                 spawnBurst(g.particles, m.x, m.y, 1.0, 0.8, 0.2, 12);
+                spawnBurst(g.particles, m.x - 0.4, m.y, 1.0, 0.6, 0.2, 12);
+                spawnBurst(g.particles, m.x + 0.4, m.y, 1.0, 0.8, 0.2, 12);
+                for (int k = 0; k < 8; k++) {
+                    Particle gp;
+                    gp.x = m.x; gp.y = m.y;
+                    double ang = k * 0.785;
+                    gp.vx = std::cos(ang) * 4.0; gp.vy = std::sin(ang) * 4.0 - 2.0;
+                    gp.r = 1.0; gp.g = 0.84; gp.b = 0.0;
+                    gp.size = 0.08; gp.maxLife = 0.8; gp.life = 0.8; gp.type = 0;
+                    g.particles.push_back(gp);
+                }
             }
             spawnBurst(g.particles, m.x, m.y, 1.0, 0.6, 0.2, 5);
             spawnMonsterDrops(g, rng, m);

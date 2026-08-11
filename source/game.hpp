@@ -190,6 +190,7 @@ struct GameState {
     double shakeT = 0, shakeIntensity = 0;
     double hitstopT = 0;
     double damageFlashT = 0;
+    double bossDeathFlashT = 0;
     double depthFadeT = 0;
     int depthFadeDir = 0;     // 0=none, 1=fade-in, 2=fade-out
     std::set<std::string> chestsOpened;

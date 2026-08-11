@@ -58,6 +58,9 @@ extern "C" {
     extern const unsigned short icon_potion_hpBitmap[];
     extern const unsigned short icon_potion_manaBitmap[];
     extern const unsigned short icon_shield_buffBitmap[];
+    extern const unsigned short wall_stoneBitmap[];
+    extern const unsigned short floor_stoneBitmap[];
+    extern const unsigned short stairsBitmap[];
 }
 
 /* --- OAM sprite GFX pointers --- */
@@ -123,36 +126,58 @@ static int heroIdx(const char* key)
     return 0;
 }
 
-/* --- Hash for procedural texture noise --- */
-static inline u32 hashPx(int x, int y)
+/* --- Hash for per-tile shade variation (matches HTML) --- */
+static inline u32 tileHash(int x, int y)
 {
     u32 h = (u32)(x * 374761393u + y * 668265263u);
     h = (h ^ (h >> 13)) * 1274126177u;
     return h;
 }
 
-/* --- Procedural textured tile colors (wall: stone, floor: stone, stairs) --- */
-static u16 tileColorTextured(uint8_t t, int px, int py)
+/* --- Blit a 16x16 texture to framebuffer at tile position with shade --- */
+static void blitTileShaded(u16* fb, int fbW, int sx, int sy,
+                            const u16* tex, int shadeMul)
 {
-    u32 h = hashPx(px, py);
-    int noise = (int)(h & 7) - 3;
-    switch (t) {
-        case T_WALL:   return OC( 8 + noise,  8 + noise, 14 + noise);
-        case T_FLOOR:  return OC(20 + noise, 18 + noise, 15 + noise);
-        case T_STAIRS: return OC(20 + noise, 28 + noise, 20 + noise);
-        default:       return OC( 4 + noise,  4 + noise,  6 + noise);
+    if (!tex) return;
+    for (int j = 0; j < TILE_PX; j++) {
+        const int py = sy + j;
+        if (py < 0 || py >= SCREEN_H) continue;
+        const int texRow = j * TILE_PX;
+        for (int i = 0; i < TILE_PX; i++) {
+            const int px = sx + i;
+            if (px < 0 || px >= fbW) continue;
+            u16 raw = tex[texRow + i];
+            /* magenta = transparent */
+            if ((raw & 0x7FFF) == 0x7C1F) continue;
+            /* apply shade: shadeMul is 0-256 fixed-point (256 = full bright) */
+            int r = ((raw >> 10) & 0x1F);
+            int g = ((raw >>  5) & 0x1F);
+            int b = ( raw        & 0x1F);
+            r = (r * shadeMul) >> 8;
+            g = (g * shadeMul) >> 8;
+            b = (b * shadeMul) >> 8;
+            fb[py * fbW + px] = BIT(15) | RGB15(r, g, b);
+        }
     }
 }
 
-static u16 tileColorTexturedFog(uint8_t t, int px, int py)
+/* --- Draw a filled 16x16 tile with bevels (walls get 3D effect) --- */
+static void drawTileWithBevel(u16* fb, int fbW, int sx, int sy, u16 baseColor, bool isWall, int shadeMul)
 {
-    u32 h = hashPx(px, py);
-    int noise = (int)(h & 3) - 1;
-    switch (t) {
-        case T_WALL:   return OC( 4 + noise,  4 + noise,  6 + noise);
-        case T_FLOOR:  return OC(10 + noise,  9 + noise,  7 + noise);
-        case T_STAIRS: return OC(10 + noise, 14 + noise, 10 + noise);
-        default:       return OC( 2,  2,  3);
+    /* base fill */
+    drawRect(fb, fbW, sx, sy, TILE_PX, TILE_PX, baseColor);
+    /* top bevel highlight */
+    if (isWall) {
+        int r = ((baseColor >> 10) & 0x1F);
+        int g = ((baseColor >>  5) & 0x1F);
+        int b = ( baseColor        & 0x1F);
+        r = std::min(31, r + 8); g = std::min(31, g + 7); b = std::min(31, b + 5);
+        u16 hi = BIT(15) | RGB15(r, g, b);
+        drawRect(fb, fbW, sx, sy, TILE_PX, 2, hi);
+        /* bottom bevel shadow */
+        r = std::max(0, r - 14); g = std::max(0, g - 12); b = std::max(0, b - 8);
+        u16 lo = BIT(15) | RGB15(r, g, b);
+        drawRect(fb, fbW, sx, sy + TILE_PX - 2, TILE_PX, 2, lo);
     }
 }
 
@@ -257,6 +282,73 @@ static void drawMinimap(u16* fb, int fbW, const Layout& l,
         const int py = oy + (int)(p.y * scale);
         drawRect(fb, fbW, px - 1, py - 1, 3, 3, OC(31, 31, 31));
     }
+}
+
+/* --- Class selection screen (sub screen) --- */
+static int selectClass()
+{
+    const int NUM_CLASSES = 9;
+    const char* keys[] = {
+        "guerriero", "ladro", "mago", "ranger", "prof",
+        "paladino", "negromante", "bardo", "monaco"
+    };
+    const char* names[] = {
+        "Guerriero", "Ladro", "Mago", "Ranger", "Prof",
+        "Paladino", "Negromante", "Bardo", "Monaco"
+    };
+    const char* abils[] = {
+        "Carica", "Passo Furtivo", "Onda d'Urto", "Raffica",
+        "Colpo Caricato", "Muro Sacro", "Drenaggio", "Canto", "Onda di Chi"
+    };
+    const int hp[]  = {16, 10,  9, 11, 22, 18, 10, 12, 14};
+    const int dmg[] = { 3,  2,  4,  2,  5,  3,  4,  2,  3};
+    const bool rng[] = {0, 0, 1, 1, 1, 0, 1, 0, 0};
+
+    int sel = 0;
+    bool confirmed = false;
+
+    /* draw initial sub screen */
+    for (int i = 0; i < 24; i++) iprintf("\x1b[%d;0H                          ", i);
+    iprintf("\x1b[0;0H");
+    iprintf(" == SCELTA EROE ==\n\n");
+    for (int i = 0; i < NUM_CLASSES; i++) {
+        iprintf(" %c %s\n", i == sel ? '>' : ' ', names[i]);
+    }
+    iprintf("\n A:Conferma\n");
+
+    while (pmMainLoop() && !confirmed) {
+        scanKeys();
+        const int down = keysDown();
+
+        if (down & KEY_UP) {
+            sel = (sel - 1 + NUM_CLASSES) % NUM_CLASSES;
+        }
+        if (down & KEY_DOWN) {
+            sel = (sel + 1) % NUM_CLASSES;
+        }
+        if (down & KEY_A || down & KEY_START) {
+            confirmed = true;
+        }
+
+        /* redraw selection list */
+        iprintf("\x1b[2;0H");
+        for (int i = 0; i < NUM_CLASSES; i++) {
+            iprintf(" %c %-10s   \n", i == sel ? '>' : ' ', names[i]);
+        }
+        /* show details for selected class */
+        iprintf("\x1b[13;0H");
+        iprintf("                    \n");
+        iprintf(" HP: %-3d  DMG: %-3d \n", hp[sel], dmg[sel]);
+        iprintf(" %s%s      \n", abils[sel], rng[sel] ? " (ranged)" : " (melee)");
+        iprintf("                    \n");
+        for (int i = 18; i < 24; i++) {
+            iprintf("\x1b[%d;0H                          ", i);
+        }
+        iprintf("\x1b[18;0H A:Conferma        \n");
+
+        swiWaitForVBlank();
+    }
+    return sel;
 }
 
 /* --- Interact with nearby objects --- */
@@ -420,7 +512,9 @@ int main(void)
     g.worldSeed = WORLD_SEED;
     g.depth     = 1;
 
-    playerSetClass(g.player, "guerriero");
+    /* --- Class selection on sub screen --- */
+    int classIdx = selectClass();
+    playerSetClass(g.player, CLASS_KEYS[classIdx]);
     g.player.x = layout.spawn.x + 0.5;
     g.player.y = layout.spawn.y + 0.5;
 
@@ -613,6 +707,12 @@ int main(void)
         /* --- Render BG layer (tiles, fog of war, effects) --- */
         dmaClearFb(mainFb, OC(4, 4, 6));
 
+        /* torch flicker: dual-frequency sine like HTML */
+        const double flick = 0.9 + 0.1 * std::sin(g.torchPhase * 3.1)
+                                + 0.04 * std::sin(g.torchPhase * 7.7);
+        const int flickMul = (int)(flick * 256.0);
+        const int dimMul = 118; /* fog: ~46% brightness */
+
         int tx0 = camX / TILE_PX;
         int ty0 = camY / TILE_PX;
         int tx1 = (camX + SCREEN_W) / TILE_PX + 1;
@@ -629,14 +729,29 @@ int main(void)
                 const size_t idx = (size_t)ty * layout.w + tx;
                 const uint8_t tile = layout.grid[idx];
                 if (fovVisible[idx]) {
-                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX,
-                             tileColorTextured(tile, tx, ty));
+                    if (tile == T_WALL) {
+                        blitTileShaded(mainFb, SCREEN_W, sx, sy, wall_stoneBitmap, flickMul);
+                        /* 3D bevel on walls */
+                        u16 hi = BIT(15) | RGB15(14, 12, 9);
+                        u16 lo = BIT(15) | RGB15(2, 2, 2);
+                        drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, 2, hi);
+                        drawRect(mainFb, SCREEN_W, sx, sy + 14, TILE_PX, 2, lo);
+                    } else if (tile == T_STAIRS) {
+                        blitTileShaded(mainFb, SCREEN_W, sx, sy, stairsBitmap, flickMul);
+                    } else {
+                        blitTileShaded(mainFb, SCREEN_W, sx, sy, floor_stoneBitmap, flickMul);
+                    }
                 } else if (fovVisited[idx]) {
-                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX,
-                             tileColorTexturedFog(tile, tx, ty));
+                    /* fog: dim version */
+                    if (tile == T_WALL) {
+                        blitTileShaded(mainFb, SCREEN_W, sx, sy, wall_stoneBitmap, dimMul);
+                    } else if (tile == T_STAIRS) {
+                        blitTileShaded(mainFb, SCREEN_W, sx, sy, stairsBitmap, dimMul);
+                    } else {
+                        blitTileShaded(mainFb, SCREEN_W, sx, sy, floor_stoneBitmap, dimMul);
+                    }
                 } else {
-                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX,
-                             OC(1, 1, 2));
+                    drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX, OC(1, 1, 2));
                 }
             }
         }
@@ -647,10 +762,13 @@ int main(void)
                 if (fovVisible[(size_t)t.y * layout.w + t.x]) {
                     const int sx = t.x * TILE_PX - camX + 4;
                     const int sy = t.y * TILE_PX - camY + 4;
-                    /* torch flicker via hash */
-                    const int flicker = (int)(hashPx(t.x + (int)(g.gameTime * 3), t.y) & 7);
-                    drawRect(mainFb, SCREEN_W, sx, sy, 8, 8,
-                             OC(28 + flicker / 2, 22 + flicker / 3, 6));
+                    /* per-torch phase + dual-frequency flicker */
+                    const double ph = ((t.x * 7 + t.y * 13) % 20) / 20.0;
+                    const double tfl = 0.75 + 0.25 * std::sin(g.torchPhase * 9 + ph * 6.28)
+                                         + 0.08 * std::sin(g.torchPhase * 23 + ph * 13);
+                    const int tflI = (int)(tfl * 255);
+                    blitTileShaded(mainFb, SCREEN_W, t.x * TILE_PX - camX,
+                                   t.y * TILE_PX - camY, torchBitmap, tflI);
                 }
             }
         }
@@ -667,14 +785,23 @@ int main(void)
         for (const Particle& part : g.particles) {
             const int sx = (int)(part.x * TILE_PX) - camX;
             const int sy = (int)(part.y * TILE_PX) - camY;
-            if (sx < 0 || sx >= SCREEN_W || sy < 0 || sy >= SCREEN_H) continue;
+            if (sx < -4 || sx >= SCREEN_W + 4 || sy < -4 || sy >= SCREEN_H + 4) continue;
             const double lifeRatio = part.life / part.maxLife;
             const int sz = std::max(1, (int)(part.size * TILE_PX * lifeRatio));
             const int r = (int)(part.r * lifeRatio * 31);
             const int g2 = (int)(part.g * lifeRatio * 31);
             const int b = (int)(part.b * lifeRatio * 31);
-            drawRect(mainFb, SCREEN_W, sx, sy, sz, sz,
-                     OC(std::min(31, r), std::min(31, g2), std::min(31, b)));
+            const u16 pc = OC(std::min(31, r), std::min(31, g2), std::min(31, b));
+            if (part.type == 1) {
+                /* shard: rotated rectangle */
+                drawRect(mainFb, SCREEN_W, sx, sy, sz, sz / 2 + 1, pc);
+            } else if (part.type == 2) {
+                /* smoke: larger, faint */
+                const int ssz = sz + (int)(TILE_PX * 0.3 * (1.0 - lifeRatio));
+                drawRect(mainFb, SCREEN_W, sx - ssz / 4, sy - ssz / 4, ssz / 2, ssz / 2, pc);
+            } else {
+                drawRect(mainFb, SCREEN_W, sx, sy, sz, sz, pc);
+            }
         }
 
         /* Floating texts on BG */
@@ -705,6 +832,16 @@ int main(void)
                         }
                     }
                 }
+            }
+        }
+
+        /* Boss death flash: warm white overlay decaying */
+        if (g.bossDeathFlashT > 0) {
+            const double k = g.bossDeathFlashT / 0.35;
+            const int a = (int)(k * 14);
+            if (a > 0) {
+                drawRect(mainFb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H,
+                         OC(std::min(31, 28 + a / 2), std::min(31, 23 + a / 3), std::min(31, 12 + a / 4)));
             }
         }
 
