@@ -62,7 +62,7 @@ static char bossTypeForDepth(int depth)
     return BOSS_TYPES[idx];
 }
 
-static bool isBossFloor(int depth)
+bool isBossFloor(int depth)
 {
     return depth >= 5 && depth % 5 == 0;
 }
@@ -561,6 +561,15 @@ uint32_t fnv1a(const std::vector<uint8_t>& data)
         h *= 0x01000193u;
     }
     return h;
+}
+
+void applyBossGates(Layout& l, bool sealed)
+{
+    if (!l.hasBossRoom) return;
+    for (const Pt& g : l.bossRoom.gates) {
+        const size_t idx = static_cast<size_t>(g.y) * l.w + g.x;
+        l.grid[idx] = sealed ? T_WALL : T_FLOOR;
+    }
 }
 
 } // namespace abisso

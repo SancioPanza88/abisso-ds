@@ -1,42 +1,49 @@
 /*------------------------------------------------------------------------------
-    ABISSO DS — blocco 3: classi, mostri e combattimento.
-
-    Schermo superiore: mondo (BG bitmap 16bpp, tile 16px = 16x12 tile visibili)
-    Schermo inferiore: console di debug/HUD testuale
-
-    Logica da index.html: updateMonsterAI (:1835), performAttack (:3330),
-    hostDealMonsterHit (:2884), handleRespawn, CLASSES (:1020), MONSTER_TYPES (:1112).
+    ABISSO DS — blocco finale: tutti i sistemi integrati.
+    Schermo superiore: mondo (BG bitmap 16bpp, tile 16px)
+    Schermo inferiore: HUD touch, minimap, pannelli
 ------------------------------------------------------------------------------*/
 #include <nds.h>
 #include <stdio.h>
 #include <time.h>
+#include <string>
+#include <cmath>
 
 #include "world.hpp"
 #include "game.hpp"
+#include "fx.hpp"
+#include "ui.hpp"
+#include "sfx.hpp"
 
 #define TILE_PX 16
 #define SCR_W   256
 #define SCR_H   192
-#define CAM_TW  (SCR_W / TILE_PX)   // 16 tile visibili
-#define CAM_TH  (SCR_H / TILE_PX)   // 12 tile visibili
+#define CAM_TW  (SCR_W / TILE_PX)
+#define CAM_TH  (SCR_H / TILE_PX)
 
 static u16* const fb = (u16*)BG_GFX;
 
-// --- colori (RGB15 5-5-5) ---
+/* --- colori RGB15 --- */
 static const u16 C_BLACK       = RGB15( 1, 1, 1 );
 static const u16 C_UNVIS_WALL  = RGB15( 2, 2, 3 );
 static const u16 C_UNVIS_FLOOR = RGB15( 3, 3, 2 );
-static const u16 C_VIS_WALL    = RGB15( 7, 5, 8 );   // pietra
-static const u16 C_VIS_FLOOR   = RGB15(10, 8, 5 );   // pavimento terra
-static const u16 C_VIS_STAIRS  = RGB15(20, 14, 6);   // scale dorate
+static const u16 C_VIS_WALL    = RGB15( 7, 5, 8 );
+static const u16 C_VIS_FLOOR   = RGB15(10, 8, 5 );
+static const u16 C_VIS_STAIRS  = RGB15(20, 14, 6);
 static const u16 C_TORCH       = RGB15(31, 20, 6 );
 static const u16 C_HERO        = RGB15(31, 26, 12);
 static const u16 C_BOLT_PLAYER = RGB15(20, 26, 31);
 static const u16 C_BOLT_MONST  = RGB15(22, 15, 26);
-static const u16 C_HP_BG       = RGB15( 6,  2,  2);
-static const u16 C_HP_FG       = RGB15(31, 10, 10);
-static const u16 C_MP_BG       = RGB15( 2,  4,  7);
-static const u16 C_MP_FG       = RGB15(10, 20, 31);
+static const u16 C_CHEST_CLOSED = RGB15(21, 17, 6);
+static const u16 C_CHEST_OPEN  = RGB15(14, 11, 5);
+static const u16 C_MERCHANT    = RGB15(21, 18, 10);
+static const u16 C_GOLD_ITEM   = RGB15(31, 26, 6);
+static const u16 C_GEM_ITEM    = RGB15(10, 20, 31);
+static const u16 C_POTION_ITEM = RGB15(31, 10, 10);
+static const u16 C_MANA_ITEM   = RGB15(10, 20, 31);
+static const u16 C_POWER_ITEM  = RGB15(20, 28, 15);
+static const u16 C_EQUIP_ITEM  = RGB15(18, 10, 31);
+static const u16 C_BOSS_GATE   = RGB15(28, 10, 5);
 
 struct Game {
     abisso::Layout layout;
@@ -50,13 +57,15 @@ struct Game {
     int lastFovTx = -1, lastFovTy = -1;
     int frame = 0;
     int classIdx = 0;
+    bool showMap = false;
+    bool showEquip = false;
+    bool merchantOpen = false;
 };
 
 static Game g;
 
 static uint32_t randomSeedFromRtc()
 {
-    // seed del mondo: ora Unix dall'RTC (esempio ufficiale time/RealTimeClock)
     return (uint32_t)(time(NULL) & 0xFFFFFFFFu);
 }
 
@@ -144,7 +153,16 @@ static void renderWorld()
         }
     }
 
-    // torce visibili: puntino caldo
+    /* boss gates: tile speciali */
+    if (g.gs.bossActive && g.layout.hasBossRoom) {
+        for (const abisso::Pt& gate : g.layout.bossRoom.gates) {
+            const int sx = screenX(gate.x), sy = screenY(gate.y);
+            if (sx < 0 || sy < 0 || sx >= CAM_TW || sy >= CAM_TH) continue;
+            fillTile(sx, sy, C_BOSS_GATE);
+        }
+    }
+
+    /* torce */
     for (const abisso::Pt& t : g.layout.torches) {
         const size_t idx = static_cast<size_t>(t.y) * g.layout.w + t.x;
         if (!g.visible[idx]) continue;
@@ -156,7 +174,53 @@ static void renderWorld()
         putPixel(sx * TILE_PX + 8, sy * TILE_PX + 8, C_TORCH);
     }
 
-    // mostri visibili (blocco 2x2 tile, boss 3x3)
+    /* forzieri */
+    for (const abisso::ChestSpot& c : g.layout.chestSpots) {
+        const size_t idx = static_cast<size_t>(c.y) * g.layout.w + c.x;
+        if (!g.visible[idx]) continue;
+        const int sx = screenX(c.x), sy = screenY(c.y);
+        if (sx < 0 || sy < 0 || sx >= CAM_TW || sy >= CAM_TH) continue;
+        const bool opened = g.gs.chestsOpened.find(c.id) != g.gs.chestsOpened.end();
+        const u16 color = opened ? C_CHEST_OPEN : C_CHEST_CLOSED;
+        fillTile(sx, sy, color);
+    }
+
+    /* mercante */
+    {
+        const abisso::Pt& mp = g.layout.merchantPos;
+        const size_t idx = static_cast<size_t>(mp.y) * g.layout.w + mp.x;
+        if (g.visible[idx]) {
+            const int sx = screenX(mp.x), sy = screenY(mp.y);
+            if (sx >= 0 && sy >= 0 && sx < CAM_TW && sy < CAM_TH)
+                fillTile(sx, sy, C_MERCHANT);
+        }
+    }
+
+    /* oggetti a terra */
+    for (const abisso::GroundItem& it : g.gs.items) {
+        const int tx = (int)it.x, ty = (int)it.y;
+        const size_t idx = static_cast<size_t>(ty) * g.layout.w + tx;
+        if (!g.visible[idx]) continue;
+        const int sx = screenX(tx), sy = screenY(ty);
+        if (sx < 0 || sy < 0 || sx >= CAM_TW || sy >= CAM_TH) continue;
+        u16 color;
+        switch (it.kind) {
+            case abisso::GI_GOLD:        color = C_GOLD_ITEM; break;
+            case abisso::GI_GEM:         color = C_GEM_ITEM; break;
+            case abisso::GI_POTION:      color = C_POTION_ITEM; break;
+            case abisso::GI_MANA_POTION: color = C_MANA_ITEM; break;
+            case abisso::GI_POWER:       color = C_POWER_ITEM; break;
+            case abisso::GI_EQUIP:       color = C_EQUIP_ITEM; break;
+            default: color = RGB15(31,31,31); break;
+        }
+        /* small dot for items */
+        putPixel(sx * TILE_PX + 7, sy * TILE_PX + 7, color);
+        putPixel(sx * TILE_PX + 8, sy * TILE_PX + 7, color);
+        putPixel(sx * TILE_PX + 7, sy * TILE_PX + 8, color);
+        putPixel(sx * TILE_PX + 8, sy * TILE_PX + 8, color);
+    }
+
+    /* mostri visibili */
     for (const abisso::Monster& m : g.gs.monsters) {
         const int tx = (int)m.x, ty = (int)m.y;
         const size_t idx = static_cast<size_t>(ty) * g.layout.w + tx;
@@ -165,13 +229,17 @@ static void renderWorld()
         if (sx < -1 || sy < -1 || sx >= CAM_TW || sy >= CAM_TH) continue;
         const abisso::MonsterType& mt = *abisso::getMonsterType(m.type);
         const int sz = mt.boss ? 3 : 2;
-        const u16 c = monsterColor(m.type);
+        u16 c = monsterColor(m.type);
+        /* affix indicator */
+        if (m.affix == 'f') c = RGB15(25, 25, 5);  /* veloce: yellow */
+        if (m.affix == 'e') c = RGB15(31, 15, 5);  /* esplosivo: orange */
+        if (m.affix == 'r') c = RGB15(10, 25, 10); /* rigenerante: green */
         const int px0 = sx * TILE_PX + TILE_PX / 2 - (sz * TILE_PX) / 2;
         const int py0 = sy * TILE_PX + TILE_PX / 2 - (sz * TILE_PX) / 2;
         for (int yy = 0; yy < sz * TILE_PX; yy++)
             for (int xx = 0; xx < sz * TILE_PX; xx++)
                 putPixel(px0 + xx, py0 + yy, c);
-        // barra HP del mostro ferito
+        /* barra HP mostro ferito */
         if (m.hp < m.maxHp) {
             const int bw = sz * TILE_PX;
             const int frac = (int)(bw * m.hp / m.maxHp);
@@ -180,7 +248,7 @@ static void renderWorld()
         }
     }
 
-    // proiettili
+    /* proiettili */
     for (const abisso::Bolt& b : g.gs.bolts) {
         const int sx = (int)((b.x - g.camX) * TILE_PX) - 1;
         const int sy = (int)((b.y - g.camY) * TILE_PX) - 1;
@@ -190,52 +258,69 @@ static void renderWorld()
                 putPixel(sx + xx, sy + yy, c);
     }
 
-    // eroe (con respiro come nello scheletro web: /6)
+    /* eroe (con respiro) */
     const abisso::Player& p = g.gs.player;
-    const int sx = (int)((p.x - g.camX) * TILE_PX) + TILE_PX / 2;
-    const int sy = (int)((p.y - g.camY) * TILE_PX) + TILE_PX / 2;
+    const int hsx = (int)((p.x - g.camX) * TILE_PX) + TILE_PX / 2;
+    const int hsy = (int)((p.y - g.camY) * TILE_PX) + TILE_PX / 2;
     const int r = 6;
     const u16 heroC = ((g.frame / 6) % 2) ? C_HERO : RGB15(31, 24, 14);
     for (int yy = -r; yy < r; yy++)
         for (int xx = -r; xx < r; xx++)
-            putPixel(sx + xx, sy + yy, heroC);
+            putPixel(hsx + xx, hsy + yy, heroC);
+
+    /* floating text */
+    abisso::fxRenderFloatTexts(fb, SCR_W, g.camX, g.camY, g.gs);
+
+    /* damage flash overlay */
+    if (g.gs.damageFlashT > 0)
+        abisso::fxApplyDamageFlash(fb, SCR_W, SCR_H, g.gs.damageFlashT);
+
+    /* depth fade overlay */
+    if (g.gs.depthFadeT > 0) {
+        const int alpha = abisso::fxGetDepthFadeAlpha(g.gs.depthFadeT, 0.55);
+        if (alpha > 0) {
+            for (int y = 0; y < SCR_H; y++)
+                for (int x = 0; x < SCR_W; x++)
+                    fb[y * SCR_W + x] = RGB15(alpha, alpha, alpha);
+        }
+    }
 }
 
-static void renderHud()
-{
-    const abisso::Player& p = g.gs.player;
-    // barra HP (larghezza fissa 52px)
-    const int bw = 52;
-    const int frac = p.maxHp > 0 ? (int)(bw * p.hp / p.maxHp) : 0;
-    for (int yy = 0; yy < 4; yy++)
-        for (int xx = 0; xx < bw; xx++)
-            putPixel(8 + xx, 4 + yy, xx < frac ? C_HP_FG : C_HP_BG);
-    // barra MP (solo classi con mana)
-    if (p.maxMp > 0) {
-        const int mfrac = (int)(bw * p.mp / p.maxMp);
-        for (int yy = 0; yy < 3; yy++)
-            for (int xx = 0; xx < bw; xx++)
-                putPixel(8 + xx, 9 + yy, xx < mfrac ? C_MP_FG : C_MP_BG);
-    }
-    // indicatore combattimento boss
-    if (g.gs.bossFight && ((g.frame / 20) % 2 == 0)) {
-        for (int i = 0; i < 6; i++)
-            for (int yy = 0; yy < 8; yy++)
-                putPixel(SCR_W / 2 - 24 + i * 8, 6 + yy, RGB15(31, 8, 8));
-    }
-    // banner di morte
-    if (p.dead) {
-        for (int yy = 0; yy < 10; yy++)
-            for (int xx = 0; xx < 120; xx++)
-                putPixel(SCR_W / 2 - 60 + xx, SCR_H / 2 - 5 + yy, RGB15(15, 3, 3));
-    }
-}
+static void newRun(int classIdx);
 
 static void updateInput()
 {
     scanKeys();
     const u32 held = keysHeld();
+    const u32 down = keysDown();
     abisso::Player& p = g.gs.player;
+
+    /* touch */
+    if (keysHeld() & KEY_TOUCH) {
+        touchPosition touch;
+        touchRead(&touch);
+        const int btn = abisso::uiHandleTouch(touch, 256, 192);
+        switch (btn) {
+            case abisso::TB_HP_POTION:
+                abisso::drinkPotion(p);
+                break;
+            case abisso::TB_MP_POTION:
+                abisso::drinkManaPotion(p);
+                break;
+            case abisso::TB_INTERACT:
+                down |= KEY_B;
+                break;
+            case abisso::TB_MAP:
+                g.showMap = !g.showMap;
+                break;
+            case abisso::TB_EQUIP:
+                g.showEquip = !g.showEquip;
+                abisso::uiShowEquip(g.showEquip);
+                break;
+        }
+    }
+
+    /* movement */
     double dx = 0, dy = 0;
     if (held & KEY_UP)    dy -= 1;
     if (held & KEY_DOWN)  dy += 1;
@@ -244,11 +329,124 @@ static void updateInput()
     if (dx != 0 && dy != 0) { dx *= 0.70710678; dy *= 0.70710678; }
     if ((dx != 0 || dy != 0) && !p.dead) {
         p.fx = dx; p.fy = dy;
-        const double speed = p.cls ? p.cls->speed : 3.6;
+        double speed = p.cls ? p.cls->speed : 3.6;
+        if (p.buffHaste > 0) speed *= 1.4;
         abisso::tryMoveEntity(g.layout, p.x, p.y, dx, dy, 1.0 / 60.0, speed, 0.27);
     }
-    if (keysDown() & KEY_A)
+
+    /* attack */
+    if (down & KEY_A)
         abisso::playerAttack(g.gs, g.combatRng);
+
+    /* B = interact (stairs, chest, merchant) */
+    if (down & KEY_B) {
+        const int tx = (int)p.x, ty = (int)p.y;
+        /* stairs */
+        if (g.layout.grid[(size_t)ty * g.layout.w + tx] == abisso::T_STAIRS) {
+            abisso::advanceDepth(g.gs, g.layout, g.combatRng);
+            g.depth = g.gs.depth;
+            g.layout = abisso::generateDepth(g.depth, "main", g.worldSeed);
+            g.gs.layout = &g.layout;
+            abisso::makeInitialItems(g.gs, g.layout, g.depth, g.combatRng);
+            abisso::makeMonsters(g.gs, g.combatRng);
+            g.gs.player.x = g.layout.spawn.x + 0.5;
+            g.gs.player.y = g.layout.spawn.y + 0.5;
+            g.visible.assign(static_cast<size_t>(g.layout.w) * g.layout.h, 0);
+            g.visited.assign(static_cast<size_t>(g.layout.w) * g.layout.h, 0);
+            g.lastFovTx = g.lastFovTy = -1;
+            abisso::sfxStair();
+            return;
+        }
+        /* merchant */
+        {
+            const abisso::Pt& mp = g.layout.merchantPos;
+            const double dmx = p.x - (mp.x + 0.5), dmy = p.y - (mp.y + 0.5);
+            if (dmx * dmx + dmy * dmy < 2.1 * 2.1) {
+                g.merchantOpen = !g.merchantOpen;
+                abisso::uiShowMerchant(g.merchantOpen);
+            }
+        }
+        /* chest */
+        if (!g.merchantOpen) {
+            for (const abisso::ChestSpot& c : g.layout.chestSpots) {
+                if (g.gs.chestsOpened.find(c.id) != g.gs.chestsOpened.end()) continue;
+                const double dcx = p.x - (c.x + 0.5), dcy = p.y - (c.y + 0.5);
+                if (dcx * dcx + dcy * dcy < 2.1 * 2.1) {
+                    bool isBoss = (g.layout.hasBossRoom && c.id == g.layout.bossRoom.chest.id);
+                    int gold = abisso::openChest(g.gs, g.combatRng, c.id, isBoss);
+                    g.gs.chestsOpened.insert(c.id);
+                    if (gold >= 0) {
+                        abisso::sfxChest();
+                        abisso::spawnFloatText(g.gs, p.x, p.y - 0.7,
+                            ("+" + std::to_string(gold) + " Au").c_str(), 1);
+                    } else {
+                        abisso::spawnFloatText(g.gs, p.x, p.y - 0.7, "SIGILLATO", 3);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /* L = HP potion, R = MP potion */
+    if (down & KEY_L) { abisso::drinkPotion(p); abisso::sfxPotion(); }
+    if (down & KEY_R) { abisso::drinkManaPotion(p); abisso::sfxMana(); }
+
+    /* X = toggle map */
+    if (down & KEY_X) {
+        g.showMap = !g.showMap;
+        abisso::uiShowEquip(false);
+        g.showEquip = false;
+    }
+
+    /* Y = toggle equipment */
+    if (down & KEY_Y) {
+        g.showEquip = !g.showEquip;
+        abisso::uiShowEquip(g.showEquip);
+        g.showMap = false;
+    }
+
+    /* SELECT = cycle class */
+    if (down & KEY_SELECT) {
+        g.depth = 1;
+        g.layout = abisso::generateDepth(g.depth, "main", g.worldSeed);
+        g.gs.layout = &g.layout;
+        newRun((g.classIdx + 1) % 9);
+    }
+
+    /* START = exit */
+    /* (handled in main loop) */
+
+    /* merchant touch: buy items */
+    if (g.merchantOpen && (keysHeld() & KEY_TOUCH)) {
+        touchPosition touch;
+        touchRead(&touch);
+        const int tx = touch.px;
+        const int ty = touch.py;
+        /* merchant item zones: y 28-88 */
+        if (ty >= 28 && ty <= 44 && tx < 250) {
+            abisso::buyFromMerchant(g.gs, g.combatRng, 0);
+        } else if (ty >= 44 && ty <= 60 && tx < 250) {
+            abisso::buyFromMerchant(g.gs, g.combatRng, 1);
+        } else if (ty >= 60 && ty <= 76 && tx < 250) {
+            abisso::buyFromMerchant(g.gs, g.combatRng, 2);
+        } else if (ty >= 76 && ty <= 92 && tx < 250) {
+            abisso::buyFromMerchant(g.gs, g.combatRng, 3);
+        } else if (ty > 170) {
+            g.merchantOpen = false;
+            abisso::uiShowMerchant(false);
+        }
+    }
+
+    /* equip panel: touch to close */
+    if (g.showEquip && (keysHeld() & KEY_TOUCH)) {
+        touchPosition touch;
+        touchRead(&touch);
+        if (touch.py > 170) {
+            g.showEquip = false;
+            abisso::uiShowEquip(false);
+        }
+    }
 }
 
 static void updateFov()
@@ -268,75 +466,80 @@ static void newRun(int classIdx)
     g.gs.depth = g.depth;
     g.gs.layout = &g.layout;
     g.gs.bossFight = false;
+    g.gs.bossActive = false;
+    g.gs.bossDead = false;
     g.gs.player.x = g.layout.spawn.x + 0.5;
     g.gs.player.y = g.layout.spawn.y + 0.5;
+    abisso::makeInitialItems(g.gs, g.layout, g.depth, g.combatRng);
     abisso::makeMonsters(g.gs, g.combatRng);
     g.visible.assign(static_cast<size_t>(g.layout.w) * g.layout.h, 0);
     g.visited.assign(static_cast<size_t>(g.layout.w) * g.layout.h, 0);
     g.lastFovTx = g.lastFovTy = -1;
+    g.gs.chestsOpened.clear();
+    g.gs.items.clear();
+    g.gs.monsters.clear();
+    g.gs.bolts.clear();
+    g.gs.floatTexts.clear();
+}
+
+static void renderMinimap()
+{
+    /* render minimap on sub-screen (called from uiRender) */
+    /* minimap is handled via the mapVisible flag in uiRender */
 }
 
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])
-//------------------------------------------------------------------------------
 {
     videoSetMode(MODE_5_2D);
     videoSetModeSub(MODE_0_2D);
     vramSetBankA(VRAM_A_MAIN_BG);
+    vramSetBankC(VRAM_C_SUB_BG);
 
     consoleDemoInit();
 
     bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
 
-    // ---- SELF-TEST: pattern fisso sul framebuffer subito, prima di tutto ----
-    for (int i = 0; i < SCR_W * SCR_H; i++) fb[i] = RGB15(31, 0, 0);
+    /* sub-screen: bg0 per HUD testuale come fallback */
+    int subBg = bgInit(2, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
 
-    iprintf("\x1b[0;0HABISSO DS");
-    iprintf("\x1b[1;0H[A1] fb test rosso scritto");
-    iprintf("\x1b[2;0HA: attacco  SELECT: classe");
-    iprintf("\x1b[3;0HSTART: esci");
+    abisso::sfxInit();
+    abisso::uiInit();
 
     g.worldSeed = randomSeedFromRtc();
-    iprintf("\x1b[4;0H[A2] seed=%08x", g.worldSeed);
-
     g.combatRng = abisso::Rng(g.worldSeed ^ 0x9E3779B9u);
+    g.gs.rng = &g.combatRng;
     g.depth = 1;
     g.layout = abisso::generateDepth(g.depth, "main", g.worldSeed);
-    iprintf("\x1b[5;0H[A3] map %dx%d stanze:%d spawn:%d,%d", g.layout.w, g.layout.h,
-            (int)g.layout.rooms.size(), g.layout.spawn.x, g.layout.spawn.y);
+    g.gs.layout = &g.layout;
     newRun(0);
-    iprintf("\x1b[6;0H[A4] mostri:%d  vis:%d  player %.1f,%.1f",
-            (int)g.gs.monsters.size(), (int)g.visible.size(),
-            g.gs.player.x, g.gs.player.y);
 
     while (pmMainLoop()) {
         swiWaitForVBlank();
 
-        updateInput();
-        const u32 down = keysDown();
-        if (down & KEY_START) break;
-        if (down & KEY_SELECT) {
-            g.depth = 1;
-            g.layout = abisso::generateDepth(g.depth, "main", g.worldSeed);
-            newRun((g.classIdx + 1) % 9);
+        /* hitstop: skip update */
+        if (g.gs.hitstopT <= 0) {
+            updateInput();
         }
+
+    u32 down = keysDown();
+        if (down & KEY_START) break;
 
         abisso::updateCombat(g.gs, g.combatRng, 1.0 / 60.0);
         updateFov();
         centerCamera();
-        renderWorld();
-        renderHud();
 
-        if (g.frame % 30 == 0) {
-            int visCnt = 0;
-            for (size_t i = 0; i < g.visible.size(); i++)
-                if (g.visible[i]) visCnt++;
-            const abisso::Player& p = g.gs.player;
-            iprintf("\x1b[7;0HF=%d cam=%d,%d vis=%d fov=%d,%d  ", g.frame,
-                    g.camX, g.camY, visCnt, g.lastFovTx, g.lastFovTy);
-            iprintf("\x1b[8;0HHP %d/%d  mostri:%d  p=%d,%d        ", p.hp, p.maxHp,
-                    (int)g.gs.monsters.size(), (int)(p.x * 10), (int)(p.y * 10));
-        }
+        /* shake */
+        int shakeCamX = g.camX, shakeCamY = g.camY;
+        abisso::fxUpdateShake(g.gs, shakeCamX, shakeCamY);
+
+        /* render top screen */
+        renderWorld();
+
+        /* render sub-screen UI */
+        u16* const sub_fb = (u16*)BG_GFX_SUB;
+        abisso::uiRender(sub_fb, 256, g.gs, g.showMap ? 1 : 0);
+
         g.frame++;
     }
 

@@ -104,4 +104,10 @@ void computeFov(const Layout& l, int px, int py,
 std::vector<uint8_t> serializeLayout(const Layout& l);
 uint32_t fnv1a(const std::vector<uint8_t>& data);
 
+/* Boss */
+bool isBossFloor(int depth);
+
+/* Boss gates: sigilla/apre le porte della tana boss */
+void applyBossGates(Layout& l, bool sealed);
+
 } // namespace abisso
