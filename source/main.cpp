@@ -288,8 +288,7 @@ static bool tryInteract(GameState& g, Rng& rng)
 }
 
 /* --- Sub screen HUD text rendering --- */
-static void renderSubHud(const GameState& g, bool forceRedraw, int& lastDepth,
-                          bool& needRedraw)
+static void renderSubHud(const GameState& g, bool forceRedraw, int& lastDepth)
 {
     if (!forceRedraw && g.depth == lastDepth && !uiIsMerchantVisible() && !uiIsEquipVisible())
         return;
@@ -313,7 +312,6 @@ static void renderSubHud(const GameState& g, bool forceRedraw, int& lastDepth,
         for (int i = 11; i < 24; i++) {
             iprintf("\x1b[%d;0H                    ", i);
         }
-        needRedraw = false;
         lastDepth = g.depth;
         return;
     }
@@ -337,7 +335,6 @@ static void renderSubHud(const GameState& g, bool forceRedraw, int& lastDepth,
         for (int i = 14; i < 24; i++) {
             iprintf("\x1b[%d;0H                    ", i);
         }
-        needRedraw = false;
         lastDepth = g.depth;
         return;
     }
@@ -377,8 +374,7 @@ static void renderSubHud(const GameState& g, bool forceRedraw, int& lastDepth,
     iprintf("\x1b[15;0H DP:Muovi A:Atk ");
     iprintf("\x1b[16;0H B:PozHP X:PozMP ");
     iprintf("\x1b[17;0H Y:Use L:Abil   ");
-    needRedraw = false;
-    lastDepth = g.depth;
+        lastDepth = g.depth;
 }
 
 int main(void)
@@ -434,7 +430,6 @@ int main(void)
     int lastDepth = -1;
     bool needSubRedraw = true;
     bool mapVisible = false;
-    int prevHp = -1, prevMp = -1, prevGold = -1;
 
     while (pmMainLoop()) {
         scanKeys();
@@ -591,14 +586,6 @@ int main(void)
         updateCombat(g, rng, dt);
         checkItemPickup(g);
         tickBuffs(g.player, dt);
-
-        /* Detect value changes for sub screen redraw */
-        if (g.player.hp != prevHp || g.player.mp != prevMp || g.player.gold != prevGold) {
-            needSubRedraw = true;
-            prevHp = g.player.hp;
-            prevMp = g.player.mp;
-            prevGold = g.player.gold;
-        }
 
         /* --- Camera --- */
         int camX = (int)(g.player.x * TILE_PX) - SCREEN_W / 2;
@@ -780,7 +767,12 @@ int main(void)
         oamUpdate(&oamMain);
 
         /* --- Sub screen HUD --- */
-        renderSubHud(g, true, lastDepth, needSubRedraw);
+        {
+            bool forceRedraw = needSubRedraw || g.depth != lastDepth ||
+                               uiIsMerchantVisible() || uiIsEquipVisible();
+            renderSubHud(g, forceRedraw, lastDepth);
+            needSubRedraw = false;
+        }
     }
 
     return 0;
