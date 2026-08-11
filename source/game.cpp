@@ -698,7 +698,8 @@ static void dealMeleeDamageToPlayer(GameState& g, Monster& m, double mult, Rng& 
         p.poisonT = 3.0;
     if (mt.lifesteal) {
         m.hp = std::min(m.maxHp, m.hp + amount / 2);
-        spawnFloatText(g, m.x, m.y - 0.5, "+" + std::to_string(amount / 2), 2);
+        std::string healStr = "+" + std::to_string(amount / 2);
+        spawnFloatText(g, m.x, m.y - 0.5, healStr.c_str(), 2);
     }
     if (p.hp <= 0) handleDeath(p);
 }
