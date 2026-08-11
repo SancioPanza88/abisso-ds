@@ -63,29 +63,29 @@ void playerSetClass(Player& p, const char* key)
    Mostri
    --------------------------------------------------------------------- */
 static const MonsterType MONSTER_TABLE[] = {
-    { 'r', "ratto",          7,  2,  2.6, 5.5, 0.85,  1,  3, false, false, false, false },
-    { 'b', "pipistrello",    8,  2,  2.9, 6.5, 0.85,  1,  3, false, true,  false, false },
-    { 'g', "goblin",        14,  3,  2.3, 6.0, 0.85,  2,  5, false, false, false, false },
-    { 'j', "melma",          9,  2,  1.4, 4.5, 0.85,  1,  2, false, false, false, false },
-    { 'J', "gelatina",      22,  3,  1.2, 4.5, 0.85,  2,  4, false, false, false, true  },
-    { 's', "scheletro",     20,  4,  1.9, 6.0, 0.85,  3,  6, false, false, false, false },
-    { 'o', "orco",          32,  6,  2.0, 6.5, 0.85,  4,  9, false, false, false, false },
-    { 'z', "zombie",        26,  5,  1.3, 5.0, 0.85,  3,  6, false, false, false, false },
-    { 'S', "ragno gigante", 24,  5,  3.0, 7.5, 0.85,  4,  8, false, false, false, false },
-    { 'W', "spettro",       28,  6,  2.7, 8.0, 0.85,  5, 10, false, false, false, false },
-    { 'k', "serpente",      10,  2,  2.5, 5.5, 0.85,  1,  3, false, false, false, false },
-    { 'h', "arpia",          9,  2,  2.9, 6.5, 0.85,  1,  3, false, true,  false, false },
-    { 'C', "cavaliere",     26,  5,  1.8, 6.0, 0.85,  3,  6, false, false, false, false },
-    { 'c', "cultista",      18,  4,  2.0, 6.5, 3.00,  3,  6, true,  false, false, false },
-    { 'm', "mantide",       22,  4,  3.2, 7.5, 0.85,  4,  8, false, false, false, false },
-    { 'q', "sciamano",      20,  4,  1.9, 7.0, 2.60,  3,  7, true,  false, false, false },
-    { 'G', "golem",         40,  7,  1.4, 5.0, 0.85,  6, 12, false, false, false, false },
-    { 'D', "Drago",        120, 11,  2.3, 11.0, 0.85, 40, 70, false, false, true,  false },
-    { 'X', "Golem di Pietra", 150, 12,  1.6, 12.0, 0.85, 220, 300, false, false, true,  false },
-    { 'L', "Lich",         135, 11,  2.1, 12.0, 0.85, 200, 280, false, false, true,  false },
-    { 'M', "Regina Melme", 130, 10,  1.5, 10.0, 0.85, 190, 260, false, false, true,  false },
-    { 'R', "Re Ragno",     140, 12,  2.6, 12.0, 0.85, 210, 290, false, false, true,  false },
-    { 'K', "Re dei ratti", 120, 11,  2.9, 12.0, 0.85, 200, 280, false, false, true,  false },
+    { 'r', "ratto",          7,  2,  2.6, 5.5, 0.85,  1,  3, false, false, false, false, false, false, false, false, false, false, false },
+    { 'b', "pipistrello",    8,  2,  2.9, 6.5, 0.85,  1,  3, false, true,  false, false, false, false, false, false, false, false, false },
+    { 'g', "goblin",        14,  3,  2.3, 6.0, 0.85,  2,  5, false, false, false, false, false, false, false, false, false, false, false },
+    { 'j', "melma",          9,  2,  1.4, 4.5, 0.85,  1,  2, false, false, false, false, false, false, false, false, false, false, false },
+    { 'J', "gelatina",      22,  3,  1.2, 4.5, 0.85,  2,  4, false, false, false, true,  false, false, false, false, false, false, false },
+    { 's', "scheletro",     20,  4,  1.9, 6.0, 0.85,  3,  6, false, false, false, false, false, false, false, false, false, false, false },
+    { 'o', "orco",          32,  6,  2.0, 6.5, 0.85,  4,  9, false, false, false, false, false, false, false, false, false, false, false },
+    { 'z', "zombie",        26,  5,  1.3, 5.0, 0.85,  3,  6, false, false, false, false, false, false, false, false, false, false, false },
+    { 'S', "ragno gigante", 24,  5,  3.0, 7.5, 0.85,  4,  8, false, false, false, false, false, false, false, true,  false, false, false },
+    { 'W', "spettro",       28,  6,  2.7, 8.0, 0.85,  5, 10, false, false, false, false, false, false, false, false, false, true,  false },
+    { 'k', "serpente",      10,  2,  2.5, 5.5, 0.85,  1,  3, false, false, false, false, true,  false, false, true,  false, false, false },
+    { 'h', "arpia",          9,  2,  2.9, 6.5, 0.85,  1,  3, false, true,  false, false, false, true,  false, false, false, false, false },
+    { 'C', "cavaliere",     26,  5,  1.8, 6.0, 0.85,  3,  6, false, false, false, false, false, false, true,  false, false, false, false },
+    { 'c', "cultista",      18,  4,  2.0, 6.5, 3.00,  3,  6, true,  false, false, false, false, false, false, false, false, false, false },
+    { 'm', "mantide",       22,  4,  3.2, 7.5, 0.85,  4,  8, false, false, false, false, false, false, false, false, true,  false, false },
+    { 'q', "sciamano",      20,  4,  1.9, 7.0, 2.60,  3,  7, true,  false, false, false, false, false, false, false, false, false, true  },
+    { 'G', "golem",         40,  7,  1.4, 5.0, 0.85,  6, 12, false, false, false, false, false, false, false, false, false, true,  false },
+    { 'D', "Drago",        120, 11,  2.3, 11.0, 0.85, 40, 70, false, false, true,  false, false, false, false, false, false, false, false },
+    { 'X', "Golem di Pietra", 150, 12,  1.6, 12.0, 0.85, 220, 300, false, false, true,  false, false, false, false, false, false, true,  false },
+    { 'L', "Lich",         135, 11,  2.1, 12.0, 0.85, 200, 280, false, false, true,  false, false, false, false, false, false, false, false },
+    { 'M', "Regina Melme", 130, 10,  1.5, 10.0, 0.85, 190, 260, false, false, true,  false, false, false, false, false, false, false, false },
+    { 'R', "Re Ragno",     140, 12,  2.6, 12.0, 0.85, 210, 290, false, false, true,  false, false, false, false, true,  false, false, false },
+    { 'K', "Re dei ratti", 120, 11,  2.9, 12.0, 0.85, 200, 280, false, false, true,  false, false, false, false, false, false, false, false },
 };
 
 const MonsterType* getMonsterType(char key)
@@ -676,23 +676,232 @@ void playerAttack(GameState& g, Rng& rng)
     }
 }
 
-static void updateMonster(Monster& m, GameState& g, Rng& rng, double dt)
+static void dealMeleeDamageToPlayer(GameState& g, Monster& m, double mult, Rng& rng)
+{
+    Player& p = g.player;
+    if (p.dead || p.invulnT > 0) return;
+    int amount = m.dmg + (int)std::floor(rng.next() * 2);
+    amount = (int)(amount * mult);
+    if (p.buffShield > 0) amount /= 2;
+    const EquipStat eq = computeEquipBonus(p);
+    amount = (int)(amount * std::max(0.2, 1.0 - eq.armorPct / 100.0));
+    amount = std::max(1, amount);
+    p.hp -= amount;
+    p.invulnT = 0.45;
+    m.atkAnimT = 0.3;
+    addDamageFlash(g);
+    addShake(g, 0.22);
+    spawnFloatText(g, p.x, p.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
+    spawnBurst(g.particles, m.x + m.fx * 0.4, m.y + m.fy * 0.4, 1, 0.2, 0.2, 3);
+    const MonsterType& mt = *getMonsterType(m.type);
+    if (mt.poison || m.type == 'S' || m.type == 'k' || m.type == 'R')
+        p.poisonT = 3.0;
+    if (mt.lifesteal) {
+        m.hp = std::min(m.maxHp, m.hp + amount / 2);
+        spawnFloatText(g, m.x, m.y - 0.5, "+" + std::to_string(amount / 2), 2);
+    }
+    if (p.hp <= 0) handleDeath(p);
+}
+
+static void bossAI(Monster& m, GameState& g, Rng& rng, double dt)
 {
     const MonsterType& t = *getMonsterType(m.type);
     const Layout& l = *g.layout;
     Player& p = g.player;
 
-    /* boss dormiente */
     if (t.boss && l.hasBossRoom && !g.bossFight) {
         const BossRoom& br = l.bossRoom;
         m.x = std::min(std::max(m.x, br.x + 0.45), br.x + br.w - 0.45);
         m.y = std::min(std::max(m.y, br.y + 0.45), br.y + br.h - 0.45);
         m.state = 'i';
         m.atkCd = 0;
+        m.bossMove = 0;
         return;
     }
 
-    /* rigenerante */
+    if (m.affix == 'r' && m.hp < m.maxHp)
+        m.hp = std::min(m.maxHp, m.hp + dt * 0.045);
+
+    m.atkCd = std::max(0.0, m.atkCd - dt);
+    m.bossCdFb = std::max(0.0, m.bossCdFb - dt);
+    m.bossCdFly = std::max(0.0, m.bossCdFly - dt);
+    m.bossCdSummon = std::max(0.0, m.bossCdSummon - dt);
+    m.bossCdStomp = std::max(0.0, m.bossCdStomp - dt);
+    m.bossCdCharge = std::max(0.0, m.bossCdCharge - dt);
+
+    const double dx = p.x - m.x, dy = p.y - m.y;
+    const double d2 = dx * dx + dy * dy;
+    const double d = std::sqrt(d2 + 0.0001);
+    const double vx = dx / d, vy = dy / d;
+    m.fx = vx; m.fy = vy;
+
+    m.state = 'c';
+
+    if (m.bossMove == 0) {
+        if (d > 1.4) {
+            tryMoveEntity(l, m.x, m.y, vx, vy, dt, m.speed * 0.7, 0.45);
+        }
+        double roll = rng.next();
+        if (roll < 0.15 && m.atkCd <= 0) {
+            m.bossMove = 1; m.bossPhase = 0; m.bossTimer = 0; m.bossHitDone = false;
+        } else if (roll < 0.30 && m.bossCdFb <= 0) {
+            m.bossMove = 3; m.bossPhase = 0; m.bossTimer = 0; m.bossHitDone = false;
+        } else if (roll < 0.45 && m.bossCdFly <= 0) {
+            m.bossMove = 4; m.bossPhase = 0; m.bossTimer = 0;
+            m.bossFlyT = 0; m.bossLift = 0; m.bossFlying = true; m.bossDiveHit = false;
+        } else if (roll < 0.55 && m.bossCdStomp <= 0) {
+            m.bossMove = 6; m.bossPhase = 0; m.bossTimer = 0; m.bossHitDone = false;
+        } else if (roll < 0.65 && m.bossCdSummon <= 0) {
+            m.bossMove = 7; m.bossPhase = 0; m.bossTimer = 0;
+        } else if (roll < 0.75 && m.bossCdCharge <= 0) {
+            m.bossMove = 8; m.bossPhase = 0; m.bossTimer = 0;
+            m.bossHitDone = false; m.bossWpx = p.x; m.bossWpy = p.y;
+        } else if (d < 2.0 && m.atkCd <= 0) {
+            m.bossMove = 2; m.bossPhase = 0; m.bossTimer = 0; m.bossHitDone = false;
+        }
+    }
+
+    m.bossTimer += dt;
+    double chargeMult = 1.0;
+    double stompRadius = 2.2;
+    if (m.type == 'X') { chargeMult = 1.1; stompRadius = 3.2; }
+    if (m.type == 'K') chargeMult = 1.2;
+
+    switch (m.bossMove) {
+        case 1: {
+            if (m.bossPhase == 0) {
+                m.bossWindT += dt;
+                if (m.bossWindT >= 0.4) {
+                    m.bossPhase = 1; m.bossTimer = 0;
+                }
+            } else if (m.bossPhase == 1) {
+                if (!m.bossHitDone && d < 1.5) {
+                    dealMeleeDamageToPlayer(g, m, 1.2 * chargeMult, rng);
+                    m.bossHitDone = true;
+                }
+                if (m.bossTimer > 0.3) { m.bossMove = 0; m.atkCd = 3.5; m.bossWindT = 0; }
+            }
+        } break;
+        case 2: {
+            if (m.bossPhase == 0) {
+                m.bossWindT += dt;
+                if (m.bossWindT >= 0.8) { m.bossPhase = 1; m.bossTimer = 0; }
+            } else if (m.bossPhase == 1) {
+                if (m.bossTimer > 0.25 && !m.bossHitDone) {
+                    if (d < 1.7 && vx * p.fx + vy * p.fy > 0) {
+                        dealMeleeDamageToPlayer(g, m, 1.0, rng);
+                    }
+                    m.bossHitDone = true;
+                }
+                if (m.bossTimer > 0.7) { m.bossMove = 0; m.bossCdFb = 4.5; m.bossWindT = 0; }
+            }
+        } break;
+        case 3: {
+            if (m.bossPhase == 0) {
+                Bolt fb;
+                fb.x = m.x; fb.y = m.y;
+                fb.vx = vx * 4.0; fb.vy = vy * 4.0;
+                fb.life = 2.5; fb.r = 0.8;
+                fb.dmg = (int)(m.dmg * 1.3);
+                fb.fromPlayer = false;
+                g.bolts.push_back(fb);
+                m.bossPhase = 1; m.bossTimer = 0;
+            } else {
+                if (m.bossTimer > 1.5) { m.bossMove = 0; m.bossCdFb = 5.0; }
+            }
+        } break;
+        case 4: {
+            if (m.bossPhase == 0) {
+                m.bossFlyT += dt;
+                m.bossLift = std::min(1.5, m.bossLift + dt * 2.5);
+                if (m.bossFlyT >= 0.6) { m.bossPhase = 1; m.bossTimer = 0; }
+            } else if (m.bossPhase == 1) {
+                m.bossWpx = p.x; m.bossWpy = p.y;
+                if (m.bossTimer >= 0.3) { m.bossPhase = 2; m.bossTimer = 0; }
+            } else if (m.bossPhase == 2) {
+                const double ddx = m.bossWpx - m.x, ddy = m.bossWpy - m.y;
+                const double dd = std::sqrt(ddx * ddx + ddy * ddy);
+                if (dd > 0.1) {
+                    tryMoveEntity(l, m.x, m.y, ddx / dd, ddy / dd, dt, 10.0, 0.45);
+                }
+                if (!m.bossDiveHit && d < 1.5) {
+                    dealMeleeDamageToPlayer(g, m, 1.3, rng);
+                    m.bossDiveHit = true;
+                }
+                if (dd < 0.4 || m.bossTimer > 1.0) {
+                    m.bossMove = 0; m.bossCdFly = 6.0;
+                    m.bossFlying = false; m.bossLift = 0;
+                }
+            }
+        } break;
+        case 6: {
+            if (m.bossPhase == 0) {
+                m.bossWindT += dt;
+                if (m.bossWindT >= 0.5) {
+                    m.bossPhase = 1; m.bossTimer = 0;
+                    addShake(g, 0.5);
+                }
+            } else if (m.bossPhase == 1) {
+                if (!m.bossHitDone && d < stompRadius) {
+                    dealMeleeDamageToPlayer(g, m, 1.5, rng);
+                    m.bossHitDone = true;
+                }
+                if (m.bossTimer > 0.3) { m.bossMove = 0; m.bossCdStomp = 4.0; m.bossWindT = 0; }
+            }
+        } break;
+        case 7: {
+            if (m.bossPhase == 0 && m.bossTimer > 0.5) {
+                int count = 1 + (rng.next() < 0.4 ? 1 : 0);
+                for (int k = 0; k < count; k++) {
+                    const double ang = rng.next() * 6.283;
+                    Monster nm = makeMonsterAt('g', m.x + std::cos(ang) * 1.5,
+                        m.y + std::sin(ang) * 1.5, g.depth, 0);
+                    nm.state = 'c';
+                    g.monsters.push_back(nm);
+                }
+                m.bossPhase = 1; m.bossTimer = 0;
+            } else if (m.bossPhase == 1) {
+                if (m.bossTimer > 0.5) { m.bossMove = 0; m.bossCdSummon = 12.0; }
+            }
+        } break;
+        case 8: {
+            if (m.bossPhase == 0) {
+                m.bossWindT += dt;
+                if (m.bossWindT >= 0.8) {
+                    m.bossPhase = 1; m.bossTimer = 0;
+                }
+            } else if (m.bossPhase == 1) {
+                const double cdx = m.bossWpx - m.x, cdy = m.bossWpy - m.y;
+                const double cd = std::sqrt(cdx * cdx + cdy * cdy);
+                if (cd > 0.1) {
+                    tryMoveEntity(l, m.x, m.y, cdx / cd, cdy / cd, dt, 12.0, 0.45);
+                }
+                if (!m.bossHitDone && d < 1.5) {
+                    dealMeleeDamageToPlayer(g, m, 1.8 * chargeMult, rng);
+                    m.bossHitDone = true;
+                }
+                if (cd < 0.4 || m.bossTimer > 1.0) {
+                    m.bossMove = 0; m.bossCdCharge = 4.0; m.bossWindT = 0;
+                }
+            }
+        } break;
+        default: break;
+    }
+    if (m.bossMove == 0) m.bossWindT = 0;
+}
+
+static void updateMonster(Monster& m, GameState& g, Rng& rng, double dt)
+{
+    const MonsterType& t = *getMonsterType(m.type);
+    const Layout& l = *g.layout;
+    Player& p = g.player;
+
+    m.staggerT = std::max(0.0, m.staggerT - dt);
+    m.atkAnimT = std::max(0.0, m.atkAnimT - dt);
+    m.dentT = std::max(0.0, m.dentT - dt);
+
+    if (t.boss) { bossAI(m, g, rng, dt); return; }
+
     if (m.affix == 'r' && m.hp < m.maxHp)
         m.hp = std::min(m.maxHp, m.hp + dt * 0.045);
 
@@ -700,11 +909,88 @@ static void updateMonster(Monster& m, GameState& g, Rng& rng, double dt)
 
     const double dx = p.x - m.x, dy = p.y - m.y;
     const double d2 = dx * dx + dy * dy;
+    const double d = std::sqrt(d2 + 0.0001);
+    const double vx = dx / d, vy = dy / d;
+
+    if (m.dashing) {
+        m.dashT += dt;
+        const double progress = m.dashT / m.dashDur;
+        const double mx = m.dashTX - m.x, my = m.dashTY - m.y;
+        const double md = std::sqrt(mx * mx + my * my);
+        if (md > 0.05) {
+            tryMoveEntity(l, m.x, m.y, mx / md, my / md, dt, m.dashSpeed, 0.27);
+            m.fx = mx / md; m.fy = my / md;
+        }
+        if (!m.dashHit && d < 0.9) {
+            dealMeleeDamageToPlayer(g, m, 1.3, rng);
+            m.dashHit = true;
+        }
+        if (progress >= 1.0 || md < 0.15) {
+            m.dashing = false;
+            m.staggerT = 2.0;
+        }
+        return;
+    }
+
+    if (m.staggerT > 0) { m.state = 'i'; return; }
+
+    if (m.winding) {
+        m.windT += dt;
+        if (m.windFx == 'd') {
+            if (m.windT >= 0.35) {
+                m.winding = false;
+                m.dashing = true;
+                m.dashT = 0;
+                m.dashDur = 0.4;
+                m.dashSpeed = 10.0;
+                m.dashTX = p.x; m.dashTY = p.y;
+                m.dashHit = false;
+                m.atkCd = 4.5;
+            }
+        } else if (m.windFx == 's') {
+            if (m.windT >= 0.3) {
+                m.winding = false;
+                m.dashing = true;
+                m.dashT = 0;
+                m.dashDur = 0.55;
+                m.dashSpeed = 9.0;
+                const double predict = 1.0;
+                m.dashTX = p.x + p.fx * predict * 0.3;
+                m.dashTY = p.y + p.fy * predict * 0.3;
+                m.dashHit = false;
+                m.atkCd = 5.0;
+            }
+        } else if (m.windFx == 'c') {
+            if (m.windT >= 0.5) {
+                m.winding = false;
+                if (d < 1.7) {
+                    if (vx * m.fx + vy * m.fy > std::cos(1.5708 / 2.0)) {
+                        dealMeleeDamageToPlayer(g, m, 1.4, rng);
+                    }
+                }
+                m.staggerT = 2.0;
+                m.atkCd = 5.0;
+            }
+        } else if (m.windFx == 'S') {
+            if (m.windT >= 0.4) {
+                m.winding = false;
+                addShake(g, 0.4);
+                if (d < 2.2) {
+                    dealMeleeDamageToPlayer(g, m, 1.8, rng);
+                }
+                m.staggerT = 2.5;
+                m.atkCd = 4.0;
+            }
+        }
+        return;
+    }
+
+    if (m.dentT > 0) {
+        return;
+    }
 
     if (d2 < m.aggro * m.aggro) {
         m.state = 'c';
-        const double d = std::sqrt(d2);
-        const double vx = dx / (d != 0 ? d : 1), vy = dy / (d != 0 ? d : 1);
         m.fx = vx; m.fy = vy;
 
         const double reach = t.range > 0 ? t.range : 0.85;
@@ -716,13 +1002,29 @@ static void updateMonster(Monster& m, GameState& g, Rng& rng, double dt)
             }
             tryMoveEntity(l, m.x, m.y, mx, my, dt, m.speed, 0.27);
         } else if (m.atkCd <= 0) {
-            if (t.ranged) {
+            double specialRoll = rng.next();
+            if (t.dash && specialRoll < 0.25) {
+                m.winding = true; m.windT = 0; m.windFx = 'd';
+            } else if (t.swoop && specialRoll < 0.35) {
+                m.winding = true; m.windT = 0; m.windFx = 's';
+            } else if (t.cone && specialRoll < 0.45) {
+                m.winding = true; m.windT = 0; m.windFx = 'c';
+            } else if (t.stomp && specialRoll < 0.55) {
+                m.winding = true; m.windT = 0; m.windFx = 'S';
+            } else if (t.dbl) {
+                m.atkCd = 1.0;
+                m.atkAnimT = 0.3;
+                if (!p.dead && p.invulnT <= 0) {
+                    dealMeleeDamageToPlayer(g, m, 0.8, rng);
+                    m.dentT = 0.2;
+                    dealMeleeDamageToPlayer(g, m, 0.8, rng);
+                }
+            } else if (t.ranged) {
                 const double sp = 3.2;
-                const double l2 = std::sqrt(d2);
                 Bolt b;
                 b.x = m.x; b.y = m.y;
                 b.vx = vx * sp; b.vy = vy * sp;
-                b.life = std::min(1.9, l2 / sp + 0.35);
+                b.life = std::min(1.9, d / sp + 0.35);
                 b.r = 0.45;
                 b.dmg = m.dmg;
                 b.fromPlayer = false;
@@ -730,24 +1032,7 @@ static void updateMonster(Monster& m, GameState& g, Rng& rng, double dt)
                 m.atkCd = 2.1 + rng.next() * 0.6;
             } else {
                 m.atkCd = 1.05 + rng.next() * 0.3;
-                if (!p.dead && p.invulnT <= 0) {
-                    int amount = m.dmg + (int)std::floor(rng.next() * 2);
-                    /* shield buff */
-                    if (p.buffShield > 0) amount = amount / 2;
-                    /* armor from equipment */
-                    const EquipStat eq = computeEquipBonus(p);
-                    amount = (int)(amount * std::max(0.2, 1.0 - eq.armorPct / 100.0));
-                    amount = std::max(1, amount);
-                    p.hp -= amount;
-                    p.invulnT = 0.45;
-                    addDamageFlash(g);
-                    addShake(g, 0.22);
-                    spawnFloatText(g, p.x, p.y - 0.5, ("-" + std::to_string(amount)).c_str(), 3);
-                    /* poison */
-                    if (m.type == 'S' || m.type == 'k' || m.type == 'R')
-                        p.poisonT = 3.0;
-                    if (p.hp <= 0) handleDeath(p);
-                }
+                dealMeleeDamageToPlayer(g, m, 1.0, rng);
             }
         }
     } else {
@@ -760,10 +1045,10 @@ static void updateMonster(Monster& m, GameState& g, Rng& rng, double dt)
             m.wy = m.y + std::sin(ang) * 3;
         }
         const double wx = m.wx - m.x, wy = m.wy - m.y;
-        const double d = std::sqrt(wx * wx + wy * wy);
-        if (d > 0.35) {
-            tryMoveEntity(l, m.x, m.y, wx / d, wy / d, dt * 0.55, m.speed, 0.27);
-            m.fx = wx / d; m.fy = wy / d;
+        const double dd = std::sqrt(wx * wx + wy * wy);
+        if (dd > 0.35) {
+            tryMoveEntity(l, m.x, m.y, wx / dd, wy / dd, dt * 0.55, m.speed, 0.27);
+            m.fx = wx / dd; m.fy = wy / dd;
         }
     }
 }
@@ -819,6 +1104,10 @@ static void updateBolts(GameState& g, Rng& rng, double dt)
 void updateCombat(GameState& g, Rng& rng, double dt)
 {
     Player& p = g.player;
+
+    /* global time for animations */
+    g.gameTime += dt;
+    g.torchPhase += dt * 3.0;
 
     /* hitstop */
     if (g.hitstopT > 0) { g.hitstopT -= dt; return; }
@@ -921,11 +1210,15 @@ void updateCombat(GameState& g, Rng& rng, double dt)
                 g.bossDead = true;
                 applyBossGates(*const_cast<Layout*>(g.layout), false);
                 addShake(g, 0.45);
+                spawnBurst(g.particles, m.x, m.y, 1.0, 0.8, 0.2, 12);
             }
+            spawnBurst(g.particles, m.x, m.y, 1.0, 0.6, 0.2, 5);
             spawnMonsterDrops(g, rng, m);
         }
     }
     g.monsters.swap(alive);
+
+    updateParticles(g.particles, dt);
 }
 
 /* ---------------------------------------------------------------------
@@ -1124,6 +1417,36 @@ void useAbility(GameState& g, Rng& rng)
     }
 
     p.abilityT = ABIL_CD;
+}
+
+void spawnBurst(std::vector<Particle>& parts, double x, double y, double r, double g, double b, int count)
+{
+    for (int i = 0; i < count; i++) {
+        Particle p;
+        p.x = x; p.y = y;
+        const double ang = (double)i / (double)count * 6.28318;
+        const double spd = 1.5 + (i % 3) * 0.5;
+        p.vx = std::cos(ang) * spd;
+        p.vy = std::sin(ang) * spd - 1.0;
+        p.r = r; p.g = g; p.b = b;
+        p.size = 0.06 + (i % 3) * 0.02;
+        p.maxLife = 0.3 + (i % 4) * 0.1;
+        p.life = p.maxLife;
+        p.type = 0;
+        parts.push_back(p);
+    }
+}
+
+void updateParticles(std::vector<Particle>& parts, double dt)
+{
+    for (int i = (int)parts.size() - 1; i >= 0; i--) {
+        Particle& p = parts[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 3.0 * dt;
+        p.life -= dt;
+        if (p.life <= 0) parts.erase(parts.begin() + i);
+    }
 }
 
 }  // namespace abisso

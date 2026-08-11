@@ -35,6 +35,7 @@ struct MonsterType {
     double speed, aggro, range;
     int goldMin, goldMax;
     bool ranged, erratic, boss, split;
+    bool dash, swoop, cone, stomp, dbl, poison, lifesteal, beam;
 };
 const MonsterType* getMonsterType(char key);
 int monsterWeight(char key, int depth);          // index.html:1113-1136 weight
@@ -123,21 +124,53 @@ struct Monster {
     double fx = 0, fy = 1;
     char affix = 0;          // 0=none, 'f'=veloce, 'e'=esplosivo, 'r'=rigenerante
     int splitLeft = 0;       // gelatina: copie rimanenti
+    /* monster special attacks */
+    bool winding = false;    // winding up a special attack
+    double windT = 0;        // windup timer
+    char windFx = 0;         // 'd'=dash, 's'=swoop, 'S'=stomp, 'c'=cone
+    double windTargetX = 0, windTargetY = 0; // target pos for dash/swoop
+    /* dash/swoop state */
+    bool dashing = false;
+    double dashT = 0;
+    double dashDur = 0;
+    double dashSpeed = 0;
+    double dashTX = 0, dashTY = 0;
+    bool dashHit = false;
+    /* double strike (mantide) */
+    double dentT = 0;
+    int dentTarget = -1;     // player index (-1 = none)
+    /* animation */
+    double atkAnimT = 0;     // attack animation timer
+    double walkCycle = 0;    // walk cycle phase
+    double bobY = 0;         // vertical bob offset
+    double scaleFx = 1.0;    // squash/stretch scale
+    double staggerT = 0;     // stagger lockout after special
     /* boss AI */
     int bossMove = 0;        // 0=idle,1=claw,2=breath,3=fireball,4=fly,5=dive,6=stomp,7=summon,8=charge
-    int bossPhase = 0;       // sotto-fase della mossa
+    int bossPhase = 0;
     double bossTimer = 0;
     double bossCdB = 0, bossCdFb = 0, bossCdFly = 0, bossCdSummon = 0, bossCdStomp = 0, bossCdCharge = 0;
     double bossFbx = 0, bossFby = 0, bossFbvx = 0, bossFbvy = 0;
     double bossWindT = 0;
     bool bossHitDone = false;
     double bossWpx = 0, bossWpy = 0;
+    bool bossFlying = false;
+    double bossFlyT = 0;
+    double bossLift = 0;     // vertical offset when flying/diving
+    bool bossDiveHit = false;
 };
 
 struct Bolt {
     double x, y, vx, vy, life, r;
     int dmg;
     bool fromPlayer;
+};
+
+struct Particle {
+    double x, y, vx, vy, life, maxLife;
+    double r, g, b;
+    double size;
+    int type;  // 0=dot, 1=shard, 2=smoke, 3=ring
 };
 
 struct GameState {
@@ -160,7 +193,10 @@ struct GameState {
     double depthFadeT = 0;
     int depthFadeDir = 0;     // 0=none, 1=fade-in, 2=fade-out
     std::set<std::string> chestsOpened;
-    Rng* rng = nullptr;       // puntatore al rng globale (da main)
+    Rng* rng = nullptr;
+    std::vector<Particle> particles;
+    double gameTime = 0;    // game time accumulator for animations
+    double torchPhase = 0;  // torch flicker phase
 };
 
 /* --- spawn e update --- */
@@ -212,5 +248,9 @@ void addShake(GameState& g, double intensity);
 void addHitstop(GameState& g, double dur);
 void addDamageFlash(GameState& g);
 void spawnFloatText(GameState& g, double x, double y, const char* text, int colorIdx);
+
+/* --- particelle --- */
+void spawnBurst(std::vector<Particle>& parts, double x, double y, double r, double g, double b, int count);
+void updateParticles(std::vector<Particle>& parts, double dt);
 
 }  // namespace abisso

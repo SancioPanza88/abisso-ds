@@ -58,6 +58,14 @@ extern "C" {
     extern const unsigned short icon_potion_hpBitmap[];
     extern const unsigned short icon_potion_manaBitmap[];
     extern const unsigned short icon_shield_buffBitmap[];
+    extern const unsigned short wall_stoneBitmap[];
+    extern const unsigned short wall_brickBitmap[];
+    extern const unsigned short floor_stoneBitmap[];
+    extern const unsigned short floor_dirtBitmap[];
+    extern const unsigned short torchBitmap[];
+    extern const unsigned short stairsBitmap[];
+    extern const unsigned short chest_sheetBitmap[];
+    extern const unsigned short merchantBitmap[];
 }
 
 /* --- OAM sprite GFX pointers --- */
@@ -123,25 +131,42 @@ static int heroIdx(const char* key)
     return 0;
 }
 
-/* --- Tile colors --- */
-static u16 tileColor(uint8_t t)
-{
-    switch (t) {
-        case T_WALL:   return OC( 8,  8, 12);
-        case T_FLOOR:  return OC(20, 18, 15);
-        case T_STAIRS: return OC(20, 28, 20);
-        default:       return OC( 4,  4,  6);
-    }
-}
+/* --- Tile textures (16x16 16-bit, indexed by depth/room theme) --- */
+static const u16* wallTex = wall_stoneBitmap;
+static const u16* floorTex = floor_stoneBitmap;
+static const u16* stairsTex = stairsBitmap;
+static const u16* torchTex = torchBitmap;
 
-/* --- Tile colors for fog of war (dimmed for visited but not visible) --- */
-static u16 tileColorFog(uint8_t t)
+/* --- Blit a 16x16 texture to framebuffer at tile position --- */
+static void blitTile(u16* fb, int fbW, int sx, int sy, const u16* tex, int tint)
 {
-    switch (t) {
-        case T_WALL:   return OC( 4,  4,  6);
-        case T_FLOOR:  return OC(10,  9,  7);
-        case T_STAIRS: return OC(10, 14, 10);
-        default:       return OC( 2,  2,  3);
+    if (!tex) return;
+    for (int j = 0; j < TILE_PX; j++) {
+        const int py = sy + j;
+        if (py < 0 || py >= SCREEN_H) continue;
+        const int row = py * fbW + sx;
+        const int texRow = j * TILE_PX;
+        for (int i = 0; i < TILE_PX; i++) {
+            const int px = sx + i;
+            if (px < 0 || px >= fbW) continue;
+            u16 c = tex[texRow + i];
+            /* apply tint: 0=normal, 1=dim (fog), 2=black */
+            if (tint == 1) {
+                /* halve brightness */
+                const int r = (c >> 10) & 0x1F;
+                const int g = (c >> 5) & 0x1F;
+                const int b = c & 0x1F;
+                c = OC(r / 2, g / 2, b / 2);
+            } else if (tint == 2) {
+                c = OC(1, 1, 2);
+            }
+            /* preserve transparent (magenta) pixels */
+            const int r = (c >> 10) & 0x1F;
+            const int g2 = (c >> 5) & 0x1F;
+            const int b = c & 0x1F;
+            if (r == 31 && g2 == 0 && b == 31) continue; /* magenta = transparent */
+            fb[row + i] = c | BIT(15);
+        }
     }
 }
 
@@ -617,25 +642,26 @@ int main(void)
                 const int sy = ty * TILE_PX - camY;
                 const size_t idx = (size_t)ty * layout.w + tx;
                 const uint8_t tile = layout.grid[idx];
-                u16 c;
-                if (fovVisible[idx]) {
-                    c = tileColor(tile);
-                } else if (fovVisited[idx]) {
-                    c = tileColorFog(tile);
+                const int tint = fovVisible[idx] ? 0 : fovVisited[idx] ? 1 : 2;
+                if (tile == T_WALL) {
+                    blitTile(mainFb, SCREEN_W, sx, sy, wallTex, tint);
+                } else if (tile == T_FLOOR) {
+                    blitTile(mainFb, SCREEN_W, sx, sy, floorTex, tint);
+                } else if (tile == T_STAIRS) {
+                    blitTile(mainFb, SCREEN_W, sx, sy, stairsTex, tint);
                 } else {
-                    c = OC(1, 1, 2); /* never seen: near-black */
+                    blitTile(mainFb, SCREEN_W, sx, sy, floorTex, tint);
                 }
-                drawRect(mainFb, SCREEN_W, sx, sy, TILE_PX, TILE_PX, c);
             }
         }
 
-        /* Draw torches on BG (only if visible) */
+        /* Draw torches on BG (only if visible, with flicker) */
         for (const Pt& t : layout.torches) {
             if (t.x >= 0 && t.x < layout.w && t.y >= 0 && t.y < layout.h) {
                 if (fovVisible[(size_t)t.y * layout.w + t.x]) {
-                    const int sx = t.x * TILE_PX - camX + 4;
-                    const int sy = t.y * TILE_PX - camY + 4;
-                    drawRect(mainFb, SCREEN_W, sx, sy, 8, 8, OC(28, 22, 6));
+                    const int sx = t.x * TILE_PX - camX;
+                    const int sy = t.y * TILE_PX - camY;
+                    blitTile(mainFb, SCREEN_W, sx, sy, torchTex, 0);
                 }
             }
         }
@@ -646,6 +672,20 @@ int main(void)
             const int sy = (int)(b.y * TILE_PX) - camY - 2;
             drawRect(mainFb, SCREEN_W, sx, sy, 4, 4,
                      b.fromPlayer ? OC(31, 26, 6) : OC(31, 8, 8));
+        }
+
+        /* Particles on BG */
+        for (const Particle& part : g.particles) {
+            const int sx = (int)(part.x * TILE_PX) - camX;
+            const int sy = (int)(part.y * TILE_PX) - camY;
+            if (sx < 0 || sx >= SCREEN_W || sy < 0 || sy >= SCREEN_H) continue;
+            const double lifeRatio = part.life / part.maxLife;
+            const int sz = std::max(1, (int)(part.size * TILE_PX * lifeRatio));
+            const int r = (int)(part.r * lifeRatio * 31);
+            const int g2 = (int)(part.g * lifeRatio * 31);
+            const int b = (int)(part.b * lifeRatio * 31);
+            drawRect(mainFb, SCREEN_W, sx, sy, sz, sz,
+                     OC(std::min(31, r), std::min(31, g2), std::min(31, b)));
         }
 
         /* Floating texts on BG */
@@ -714,8 +754,26 @@ int main(void)
             const int mty = (int)m.y;
             if (mtx < 0 || mtx >= layout.w || mty < 0 || mty >= layout.h) continue;
             if (!fovVisible[(size_t)mty * layout.w + mtx]) continue;
-            const int sx = (int)(m.x * TILE_PX) - camX - 8;
-            const int sy = (int)(m.y * TILE_PX) - camY - 8;
+            /* walk bob + windup flash + boss lift */
+            int offY = 0;
+            if (m.state == 'c' || m.state == 'w') {
+                offY = (int)(std::sin(g.gameTime * 8.0 + m.x * 3.7) * 1.5);
+            }
+            if (m.winding) {
+                offY -= 1;
+            }
+            if (m.bossFlying) {
+                offY -= 6;
+            }
+            /* attack squash stretch */
+            int offX = 0;
+            int sprW = 16, sprH = 16;
+            if (m.atkAnimT > 0) {
+                offY -= 1;
+                sprH = 18;
+            }
+            const int sx = (int)(m.x * TILE_PX) - camX - 8 + offX;
+            const int sy = (int)(m.y * TILE_PX) - camY - 8 + offY;
             if (sx < -16 || sx > SCREEN_W + 16 || sy < -16 || sy > SCREEN_H + 16) continue;
             u16* gfx = sprMonster[(unsigned char)m.type];
             if (gfx) {
@@ -733,12 +791,21 @@ int main(void)
                 drawRect(mainFb, SCREEN_W, sx + 3, sy + 1, hpW, 1, OC(31, 8, 8));
                 drawRect(mainFb, SCREEN_W, sx + 3 + hpW, sy + 1, barW - hpW, 1, OC(6, 2, 2));
             }
+            /* windup flash (red glow) */
+            if (m.winding) {
+                drawRect(mainFb, SCREEN_W, sx + 2, sy + 2, 12, 12, OC(15, 3, 3));
+            }
         }
 
         /* Player as OAM sprite (always visible) */
         if (oid < 128) {
+            /* walk bob */
+            int poffY = 0;
+            if (!g.player.dead) {
+                poffY = (int)(std::sin(g.gameTime * 12.0) * 1.5);
+            }
             const int sx = (int)(g.player.x * TILE_PX) - camX - 8;
-            const int sy = (int)(g.player.y * TILE_PX) - camY - 8;
+            const int sy = (int)(g.player.y * TILE_PX) - camY - 8 + poffY;
             u16* gfx = sprHero[heroIdx(g.player.cls->key)];
             if (gfx && !g.player.dead) {
                 /* invulnerability blink */
